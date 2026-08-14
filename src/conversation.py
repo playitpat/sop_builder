@@ -68,12 +68,12 @@ def assessment_message(process: ProcessDefinition, next_prompt: str) -> str:
     lines = [
         "### Process Maturity Assessment",
         "- **SOP Recommended:** Yes",
-        f"- **Documentation readiness:** {maturity['documentation_readiness_score']}%",
+        f"- **Compulsory process information complete:** {maturity['documentation_readiness_score']}%",
     ]
     if captured:
         lines += ["", "### Information captured", *captured]
     if gaps:
-        lines += ["", "### Governance gaps"] + [
+        lines += ["", "### Compulsory information still needed"] + [
             f"⚠️ **{gap.label}** — {gap.reason}" for gap in gaps
         ]
     lines += ["", f"**Next question:** {next_prompt}"]

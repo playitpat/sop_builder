@@ -132,7 +132,12 @@ The service boundaries are intentionally small so local MVP components can later
 
 ## Readiness method
 
-The score is a whole-number weighted sum and reaches 100 only when no mandatory discovery question remains:
+The UI separates information into two business-friendly groups:
+
+- **Compulsory process information** is required before automated quality review and internal-review submission. Missing compulsory information lowers the score and keeps the next targeted question active.
+- **Good-to-have additional information** improves the final controlled document but does not lower process readiness or block internal review. Examples include the QD reference, approved process-flow decision, references, and general considerations.
+
+The score measures only compulsory process information. It is a whole-number weighted sum and reaches 100 only when no compulsory discovery question remains:
 
 | Item | Weight |
 |---|---:|

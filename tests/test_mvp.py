@@ -296,6 +296,7 @@ def test_multi_turn_conversation_preserves_guard_and_asks_targeted_question():
     assert mode == "local" and process.process_steps
     assert "Who is accountable for this process?" in response
     assert "Process Maturity Assessment" in response
+    assert "Compulsory information still needed" in response
 
 
 def test_merge_does_not_overwrite_user_governance():

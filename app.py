@@ -45,19 +45,25 @@ def load_project(project_id: str) -> None:
 def status_summary(process: ProcessDefinition) -> None:
     score = readiness(process)["documentation_readiness_score"]
     state = completeness(process)
-    with st.expander("Current SOP readiness", expanded=False):
-        st.progress(score / 100, text=f"Documentation readiness: {score}%")
+    with st.expander("Process documentation readiness", expanded=False):
+        st.progress(
+            score / 100, text=f"Compulsory process information: {score}% complete"
+        )
         if state["blocking"]:
-            st.warning(
-                "Still needed before internal review: " + ", ".join(state["blocking"])
-            )
+            st.warning("**Compulsory information still needed before internal review**")
+            for item in state["blocking"]:
+                st.markdown(f"- ❌ {item}")
         else:
-            st.success("All mandatory process information is captured.")
+            st.success(
+                "All compulsory process information is complete. You can run the automated quality review."
+            )
         if state["draft_warnings"]:
             st.info(
-                "Draft publication fields still open: "
-                + ", ".join(state["draft_warnings"])
+                "**Good-to-have additional information**\n\n"
+                "These items improve the final controlled document, but they do not reduce the process-readiness score or block internal review."
             )
+            for item in state["draft_warnings"]:
+                st.markdown(f"- ℹ️ {item}")
 
 
 def render_review_result(project_id: str, process: ProcessDefinition) -> None:
