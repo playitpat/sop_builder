@@ -4,15 +4,15 @@ A local MVP that preserves the prototype's conversational journey while adding d
 
 ## What the reference files establish
 
-### `Prompt SOP.docx`
+### `reference_documents/prompt/Prompt SOP.docx`
 
 The prompt requires a guarded first turn, concise SOP recommendation, natural-language discovery rather than a questionnaire, maturity assessment, relevant governance gaps, targeted follow-ups, explicit acceptance of TBD, professional global-English rewriting, and Word output as the ultimate result. The mandatory purpose opening and section sequence are enforced in code.
 
-### `SOP Builder.pptx`
+### `reference_documents/presentation/SOP Builder.pptx`
 
 The seven-slide presentation frames the current creation problem, the solution and demo, its official-template output, and the limitations/future vision. Its story is preserved as: idea → assessment → extraction → gaps → clarification → draft → review/revision → official output. Some slide content is embedded as visual artwork rather than ordinary presentation text.
 
-### `TMP-10031_SOP_TemplateCC.docx`
+### `reference_documents/templates/TMP-10031_SOP_TemplateCC.docx`
 
 Package inspection found 39 OOXML parts, 17 structured document tags (content controls), three body tables, one bookmark, a branded header/footer, styles, relationships, drawings, and section properties. Content controls are tagged (`Purpose`, `InScope`, `RolesR`, `ProcessDetails`, and others); their displayed placeholder is `Click or tap here to enter text.` Header values are split across drawing text runs. The footer's template identity and feedback/confidentiality content are static publishing elements.
 
@@ -21,13 +21,14 @@ Package inspection found 39 OOXML parts, 17 structured document tags (content co
 | Component | Responsibility | Later enterprise replacement |
 |---|---|---|
 | `src/models.py` | Validated process model and field provenance | Dataverse entities |
-| `src/agents.py` | First-turn guard, extraction, readiness, governance, generator, reviewer, loop | Copilot Studio / OpenAI Responses API agents |
+| `src/conversation.py` / `src/openai_service.py` | Incremental chat orchestration, conservative fallback, Responses API adapter | Copilot Studio agents |
+| `src/agents.py` | Readiness, governance, generator, deterministic reviewer, loop | Copilot Studio / OpenAI review agents |
 | `src/repository.py` | SQLite projects, messages, process snapshots, gaps/drafts/reviews, files | Dataverse |
 | `src/knowledge.py` | Transparent local TF-IDF retrieval with source names | SharePoint / Microsoft Graph search |
 | `src/document.py` | In-place OOXML population and independent validation | Graph/Word automation where appropriate |
 | `app.py` | Streamlit conversational workspace and download | Teams/Copilot Studio front end |
 
-All core behavior is deterministic and works without sending content externally. `OPENAI_API_KEY` is reserved for a future optional Responses API enhancement; the current tested MVP does not transmit files or prompts. The lightweight runtime model uses standard-library validation so the complete core and tests can run in restricted/offline environments; `pydantic` is listed for the production environment and is the intended schema boundary when connecting model-generated structured output.
+The single chat bar saves each turn, merges newly extracted facts without erasing previous answers, and asks the next relevant governance question. When `OPENAI_API_KEY` is configured, conversation text and the structured process state are sent to the OpenAI Responses API for incremental extraction and targeted questioning. Without a key—or if an API call fails—the conservative local fallback remains usable. Raw knowledge files are never uploaded by this adapter.
 
 ## Word approach and rationale
 
@@ -37,7 +38,7 @@ Validation reopens the ZIP/XML and checks section presence/order, three tables, 
 
 ## Quality review loop
 
-The generator builds a normalized draft from the process definition and provenance snapshot. The logically separate reviewer checks mandatory section order, purpose wording, scope, explicit RACI/TBD, actionable ordered steps and actors, trigger/output, approvals/records, non-invention of flow, vague wording, revision history, and appendices. Blocking failures return suggested revisions. The controller stops when blocking checks pass and score is at least 90, or after three cycles; all draft and review records are persisted. The offline deterministic reviewer is the tested baseline; model-based semantic review is the primary next enhancement once a configured enterprise model endpoint is available.
+The generator builds a normalized draft from the process definition and provenance snapshot. The logically separate reviewer checks mandatory section order, purpose wording, scope, explicit RACI/TBD, actionable ordered steps and actors, trigger/output, approvals/records, non-invention of flow, vague wording, revision history, and appendices. Blocking failures return suggested revisions. The controller stops when blocking checks pass and score is at least 90, or after three cycles; all draft and review records are persisted. AI improves conversational discovery; deterministic controls remain the final publishing gate.
 
 ## Readiness score
 
@@ -54,6 +55,14 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+To enable AI conversation, copy `.env.example` to the gitignored `.env` and add your key, or set it in the launch environment (never commit it):
+
+```bash
+export OPENAI_API_KEY="your-key"
+export OPENAI_MODEL="gpt-5-mini"
+streamlit run app.py
+```
+
 Run the synthetic demonstration and tests:
 
 ```bash
@@ -67,14 +76,14 @@ The demo output is `generated/SOP – Power BI Sales Dashboard Product Creation 
 
 - Secrets are environment variables; `.env` is ignored.
 - Conversation/process data and artifact metadata remain in local SQLite.
-- Knowledge documents remain local and retrieval returns named sources and short excerpts.
+- Knowledge documents remain local and the Knowledge Base page supports upload, extracted-text preview, source download, deletion, and named retrieval for TXT, Markdown, and DOCX. PDF files can be stored/downloaded; text extraction requires the declared `pypdf` dependency in the application environment.
 - Do not place confidential production material in a development checkout. Define retention/access controls before enterprise use.
 - Uploaded image, process-map, and visual-PDF understanding is an experimental future capability and is currently disabled rather than silently sending artifacts externally.
 
 ## Known limitations and recommended Microsoft 365 path
 
-- Deterministic extraction handles the demo and straightforward English, but complex prose benefits from schema-constrained Responses API extraction.
-- Model-based semantic review is not enabled without an approved endpoint; deterministic independent checks are functional.
-- Local retrieval indexes Markdown/text only. Implement the same service interface using Graph Search over permission-trimmed SharePoint content, with citations and document version metadata.
+- AI extraction requires a valid OpenAI API key and network access; local fallback handles straightforward English but is intentionally conservative.
+- Model-based semantic review remains a subsequent enhancement; deterministic independent publishing checks are functional.
+- Local retrieval indexes TXT, Markdown, and DOCX text. Implement the same service interface using Graph Search over permission-trimmed SharePoint content, with citations and document version metadata.
 - Final pagination and visual fidelity should be certified in desktop Word. A conversion/rendering tool was unavailable in the build environment, so validation is structural rather than pixel-based.
 - Next, expose the domain services behind authenticated APIs, map projects to Dataverse, use Copilot Studio for conversation, SharePoint/Graph for knowledge and controlled documents, and Power Automate for approval/publication. Preserve this service separation so no workflow rewrite is required.

@@ -29,11 +29,28 @@ class ProcessStep:
     provenance: Provenance = Provenance.USER
 
 
-FIELDS = ("sop_title", "qd_reference", "purpose", "in_scope", "out_of_scope",
-          "responsible_role", "accountable_role", "consulted_roles", "informed_roles",
-          "process_trigger", "process_output", "approvals", "validation_criteria",
-          "required_records", "escalation_path", "references", "process_flow_reference",
-          "general_considerations", "document_control_information", "appendices")
+FIELDS = (
+    "sop_title",
+    "qd_reference",
+    "purpose",
+    "in_scope",
+    "out_of_scope",
+    "responsible_role",
+    "accountable_role",
+    "consulted_roles",
+    "informed_roles",
+    "process_trigger",
+    "process_output",
+    "approvals",
+    "validation_criteria",
+    "required_records",
+    "escalation_path",
+    "references",
+    "process_flow_reference",
+    "general_considerations",
+    "document_control_information",
+    "appendices",
+)
 
 
 @dataclass
@@ -72,8 +89,19 @@ class ProcessDefinition:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ProcessDefinition":
-        kwargs: dict[str, Any] = {n: Value(data.get(n, {}).get("value"), Provenance(data.get(n, {}).get("provenance", Provenance.MISSING))) for n in FIELDS}
-        kwargs["process_steps"] = [ProcessStep(**{**x, "provenance": Provenance(x.get("provenance", Provenance.USER))}) for x in data.get("process_steps", [])]
+        kwargs: dict[str, Any] = {
+            n: Value(
+                data.get(n, {}).get("value"),
+                Provenance(data.get(n, {}).get("provenance", Provenance.MISSING)),
+            )
+            for n in FIELDS
+        }
+        kwargs["process_steps"] = [
+            ProcessStep(
+                **{**x, "provenance": Provenance(x.get("provenance", Provenance.USER))}
+            )
+            for x in data.get("process_steps", [])
+        ]
         return cls(**kwargs)
 
 
