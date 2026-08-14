@@ -2,10 +2,9 @@ from pathlib import Path
 
 import streamlit as st
 
-from src.agents import governance_gaps, readiness, review_loop
+from src.agents import completeness, readiness, review_loop
 from src.conversation import handle_turn
 from src.document import populate_template, validate_docx
-from src.knowledge import LocalKnowledgeService
 from src.models import ProcessDefinition
 from src.openai_service import OpenAIService
 from src.repository import ProjectRepository
@@ -15,36 +14,92 @@ TEMPLATE = Path("reference_documents/templates/TMP-10031_SOP_TemplateCC.docx")
 st.set_page_config(page_title="Danone SOP Builder Future Version", layout="wide")
 st.markdown(
     """<style>
-:root{--navy:#102a43;--blue:#1261a0;--purple:#7253a6}.stApp{background:#f7f9fc}
-.hero{padding:1rem 1.3rem;border-left:6px solid var(--purple);background:white;border-radius:8px}
-.status{padding:.55rem .8rem;background:#edf5ff;border-radius:8px;color:#102a43}
-</style>""",
+    :root{--navy:#102a43;--blue:#1769c2;--purple:#7253a6}
+    .stApp{background:#f7f9fc}.block-container{max-width:1050px;padding-top:1.4rem}
+    .hero{padding:1rem 1.3rem;border-left:6px solid var(--purple);background:white;border-radius:12px;margin-bottom:1rem}
+    [data-testid="stChatMessage"]{background:white;border:1px solid #e4eaf2;border-radius:12px;padding:.45rem .8rem}
+    [data-testid="stSidebar"]{background:#eef2f8}
+    </style>""",
     unsafe_allow_html=True,
 )
 
 repo = ProjectRepository()
-kb = LocalKnowledgeService()
 ai = OpenAIService()
 st.sidebar.title("SOP Builder")
 page = st.sidebar.radio(
-    "Workspace", ["Conversation", "Existing projects", "Knowledge Base", "Settings"]
+    "Workspace", ["Create SOP", "SOP Library", "Internal Review Queue"]
 )
+st.sidebar.caption(f"AI: {'OpenAI' if ai.enabled else 'Local fallback'}")
 
 
-def select_project(project_id: str) -> None:
+def load_project(project_id: str) -> None:
     loaded = repo.load(project_id)
     if loaded:
         st.session_state.project_id = project_id
         st.session_state.process = loaded["process"]
+        for key in ("reviews", "validation", "output"):
+            st.session_state.pop(key, None)
+
+
+def status_summary(process: ProcessDefinition) -> None:
+    score = readiness(process)["documentation_readiness_score"]
+    state = completeness(process)
+    with st.expander("Current SOP readiness", expanded=False):
+        st.progress(score / 100, text=f"Documentation readiness: {score}%")
+        if state["blocking"]:
+            st.warning(
+                "Still needed before internal review: " + ", ".join(state["blocking"])
+            )
+        else:
+            st.success("All mandatory process information is captured.")
+        if state["draft_warnings"]:
+            st.info(
+                "Draft publication fields still open: "
+                + ", ".join(state["draft_warnings"])
+            )
+
+
+def render_review_result(project_id: str, process: ProcessDefinition) -> None:
+    if "reviews" not in st.session_state:
+        return
+    with st.chat_message("assistant"):
+        st.markdown("### Automated SOP quality review")
+        for review in st.session_state.reviews:
+            icon = "✅" if not review.blocking_issues and review.score >= 90 else "❌"
+            st.markdown(
+                f"{icon} **Draft {review.cycle} → Review {review.cycle}: {review.score}/100**"
+            )
+            for issue in review.blocking_issues:
+                st.markdown(f"- ❌ {issue}")
+            for recommendation in review.recommendations:
+                st.markdown(f"- ⚠️ {recommendation}")
+        validation = st.session_state.validation
+        if validation["valid"]:
+            st.success("Word document validation passed.")
+            output = Path(st.session_state.output)
+            st.download_button(
+                "Download working SOP draft", output.read_bytes(), file_name=output.name
+            )
+            state = completeness(process)
+            if state["ready_for_review"]:
+                if st.button("Submit this SOP for internal review", type="primary"):
+                    repo.submit_for_review(project_id)
+                    st.success("Submitted to the Internal Review Queue.")
+            else:
+                st.warning(
+                    "Internal review submission is blocked until mandatory fields are resolved: "
+                    + ", ".join(state["blocking"])
+                )
+        else:
+            st.error("Word validation failed: " + "; ".join(validation["errors"]))
 
 
 def render_conversation() -> None:
     st.markdown(
-        '<div class="hero"><h1>Danone SOP Builder <span style="color:#7253a6">Future Version</span></h1>'
-        "<p>Describe your process naturally. I will remember it and ask only the next relevant questions.</p></div>",
+        '<div class="hero"><h1>Danone SOP Builder</h1><p>Describe the process naturally. The agent will assess it once, then ask one targeted question at a time.</p></div>',
         unsafe_allow_html=True,
     )
-    if st.button("＋ Start a new SOP conversation"):
+    if st.button("＋ Start a new SOP"):
         for key in ("project_id", "process", "reviews", "validation", "output"):
             st.session_state.pop(key, None)
         st.rerun()
@@ -53,15 +108,37 @@ def render_conversation() -> None:
     history = repo.messages(project_id) if project_id else []
     if not history:
         with st.chat_message("assistant"):
-            st.write("What process would you like to document?")
+            st.markdown("**Hello — what process would you like to document?**")
     for message in history:
         with st.chat_message(message["role"]):
-            st.write(message["content"])
+            st.markdown(message["content"])
+    render_review_result(project_id, process) if project_id else None
+    if project_id:
+        status_summary(process)
+        state = completeness(process)
+        if process.process_steps:
+            label = (
+                "Generate reviewed working draft"
+                if state["blocking"]
+                else "Generate reviewed SOP"
+            )
+            if st.button(label, type="primary"):
+                draft, reviews = review_loop(process)
+                repo.artifact(project_id, "draft", draft)
+                for review in reviews:
+                    repo.artifact(project_id, "review", review.__dict__)
+                output = populate_template(TEMPLATE, draft)
+                validation = validate_docx(output)
+                repo.generated_file(project_id, output, validation)
+                repo.save_process(project_id, process, "generated")
+                st.session_state.reviews = reviews
+                st.session_state.validation = validation
+                st.session_state.output = str(output)
+                st.rerun()
     prompt = st.chat_input("Describe the process or answer the latest question…")
     if prompt:
         if not project_id:
-            provisional = prompt[:80].strip() or "Untitled SOP"
-            project_id = repo.create(provisional)
+            project_id = repo.create(prompt[:80].strip() or "Untitled SOP")
             st.session_state.project_id = project_id
         conversation = [
             {"role": item["role"], "content": item["content"]} for item in history
@@ -73,143 +150,102 @@ def render_conversation() -> None:
         st.session_state.process = process
         st.session_state.last_mode = mode
         st.rerun()
-    if project_id:
-        st.caption(
-            f"Conversation mode: **{'OpenAI' if ai.enabled else 'local fallback'}** · Project saved automatically"
-        )
-        with st.expander(
-            "Process information, maturity, and governance", expanded=True
-        ):
-            left, right = st.columns(2)
-            with left:
-                st.subheader("Structured Process Information")
-                st.json(process.to_dict(), expanded=False)
-                st.subheader("Maturity")
-                st.json(readiness(process))
-            with right:
-                st.subheader("Outstanding Governance Gaps")
-                gaps = governance_gaps(process)
-                if gaps:
-                    for gap in gaps:
-                        st.warning(f"**{gap.label}** — {gap.reason}")
-                else:
-                    st.success("No deterministic governance gaps remain.")
-                sources = kb.retrieve(
-                    str(process.sop_title.value)
-                    + " "
-                    + " ".join(step.action for step in process.process_steps)
-                )
-                st.subheader("Knowledge Used")
-                for source in sources:
-                    st.write(f"• {source['source']} · relevance {source['score']}")
-        if process.process_steps and st.button(
-            "Generate, independently review, and validate SOP", type="primary"
-        ):
-            draft, reviews = review_loop(process)
-            repo.artifact(project_id, "draft", draft)
-            for review in reviews:
-                repo.artifact(project_id, "review", review.__dict__)
-            output = populate_template(TEMPLATE, draft)
-            validation = validate_docx(output)
-            repo.generated_file(project_id, output, validation)
-            repo.save_process(project_id, process, "generated")
-            st.session_state.reviews = reviews
-            st.session_state.validation = validation
-            st.session_state.output = str(output)
-        if "reviews" in st.session_state:
-            st.subheader("Agent Review Loop")
-            for review in st.session_state.reviews:
-                state = (
-                    "Approved"
-                    if not review.blocking_issues and review.score >= 90
-                    else "Revision"
-                )
-                st.write(
-                    f"Draft {review.cycle} → Review {review.cycle}: **{review.score}** → {state}"
-                )
-            st.json(st.session_state.validation)
-            if st.session_state.validation["valid"]:
-                with open(st.session_state.output, "rb") as document:
-                    st.download_button(
-                        "Download Final SOP",
-                        document,
-                        file_name=Path(st.session_state.output).name,
-                    )
-        # A hot-reloaded Streamlit process may still hold an older repository class.
-        # Do not break the conversation; a full restart restores file history.
-        file_loader = getattr(repo, "list_generated_files", None) or getattr(
-            repo, "files", None
-        )
-        previous_files = file_loader(project_id) if callable(file_loader) else []
-        if previous_files:
-            with st.expander("Previously generated documents"):
-                for index, item in enumerate(previous_files):
-                    path = Path(item["path"])
-                    if path.exists():
-                        st.download_button(
-                            f"Download {path.name}",
-                            path.read_bytes(),
-                            file_name=path.name,
-                            key=f"previous-{project_id}-{index}",
-                        )
 
 
-if page == "Knowledge Base":
-    st.title("Enterprise SOP Knowledge Base")
+def render_library() -> None:
+    st.title("SOP Library")
     st.caption(
-        "Upload, inspect, download, and remove local reference sources. Files remain on this machine."
+        "Working drafts, submissions, validated SOPs, and their complete review history."
     )
-    upload = st.file_uploader(
-        "Add a reference document", type=["txt", "md", "docx", "pdf"]
-    )
-    if upload and st.button("Add to knowledge base"):
-        kb.add(upload.name, upload.getvalue())
-        st.rerun()
-    for source in kb.sources():
-        with st.expander(f"{source['name']} · {source['status']}"):
-            st.caption(f"{source['type']} · {source['size']} bytes")
-            st.text_area(
-                "Extracted-text preview",
-                source["preview"] or "No text preview available.",
-                disabled=True,
-                key=f"preview-{source['path']}",
-            )
-            first, second = st.columns(2)
-            with first:
-                st.download_button(
-                    "Download source",
-                    source["path"].read_bytes(),
-                    file_name=source["name"],
-                    key=f"download-{source['path']}",
-                )
-            with second:
-                if st.button("Remove source", key=f"delete-{source['path']}"):
-                    kb.delete(source["path"])
-                    st.rerun()
-elif page == "Existing projects":
-    st.title("Resume an SOP conversation")
     projects = repo.list_projects()
     if not projects:
-        st.info("No saved projects yet. Start in Conversation.")
+        st.info("No SOPs have been created yet.")
+        return
+    filters = st.multiselect(
+        "Status",
+        ["discovery", "generated", "submitted", "changes_requested", "validated"],
+        default=["generated", "submitted", "changes_requested", "validated"],
+    )
     for project in projects:
-        if st.button(
-            f"{project['title']} · {project['status']} · {project['updated_at']}",
-            key=project["id"],
+        if filters and project["status"] not in filters:
+            continue
+        icon = {
+            "validated": "✅",
+            "submitted": "🕐",
+            "changes_requested": "⚠️",
+            "generated": "📝",
+        }.get(project["status"], "💬")
+        with st.expander(
+            f"{icon} {project['title']} · {project['status'].replace('_', ' ').title()}"
         ):
-            select_project(project["id"])
-            st.session_state.page_hint = "Conversation"
-            st.success(
-                "Project loaded. Select Conversation to continue where you stopped."
+            st.caption(f"Last updated: {project['updated_at']}")
+            history = repo.review_history(project["id"])
+            for item in history:
+                st.markdown(
+                    f"- **{item['status'].replace('_', ' ').title()}** by {item['reviewer'] or 'Unassigned'} — {item['comment'] or 'No comment'}"
+                )
+            for index, item in enumerate(repo.list_generated_files(project["id"])):
+                path = Path(item["path"])
+                if path.exists():
+                    st.download_button(
+                        f"Download {path.name}",
+                        path.read_bytes(),
+                        file_name=path.name,
+                        key=f"library-{project['id']}-{index}",
+                    )
+            if st.button("Resume conversation", key=f"resume-{project['id']}"):
+                load_project(project["id"])
+                st.success("Loaded. Select Create SOP to continue.")
+
+
+def render_review_queue() -> None:
+    st.title("Internal Review Queue")
+    st.caption("Human validation is separate from the automated quality score.")
+    queue = repo.projects_by_status(("submitted",))
+    if not queue:
+        st.info("No SOPs are awaiting internal review.")
+        return
+    for project in queue:
+        with st.expander(f"🕐 {project['title']}", expanded=True):
+            files = repo.list_generated_files(project["id"])
+            if files:
+                path = Path(files[0]["path"])
+                if path.exists():
+                    st.download_button(
+                        "Download submitted SOP",
+                        path.read_bytes(),
+                        file_name=path.name,
+                        key=f"review-file-{project['id']}",
+                    )
+            reviewer = st.text_input(
+                "Internal controller", key=f"reviewer-{project['id']}"
             )
-elif page == "Settings":
-    st.title("Settings")
-    st.metric("Conversation mode", "OpenAI" if ai.enabled else "Local fallback")
-    st.write(
-        "Set `OPENAI_API_KEY` in the environment to enable AI extraction and targeted follow-up questions."
-    )
-    st.write(f"Configured model: `{ai.model}`")
-    st.info(
-        "Knowledge documents are local. In AI mode, only conversation text and structured process state are sent to OpenAI; source files are not uploaded."
-    )
+            comment = st.text_area("Review comments", key=f"comment-{project['id']}")
+            first, second = st.columns(2)
+            with first:
+                if st.button(
+                    "Request changes",
+                    key=f"changes-{project['id']}",
+                    disabled=not reviewer.strip(),
+                ):
+                    repo.record_review(
+                        project["id"], "changes_requested", reviewer, comment
+                    )
+                    st.rerun()
+            with second:
+                if st.button(
+                    "Validate SOP",
+                    type="primary",
+                    key=f"validate-{project['id']}",
+                    disabled=not reviewer.strip(),
+                ):
+                    repo.record_review(project["id"], "validated", reviewer, comment)
+                    st.rerun()
+
+
+if page == "SOP Library":
+    render_library()
+elif page == "Internal Review Queue":
+    render_review_queue()
 else:
     render_conversation()

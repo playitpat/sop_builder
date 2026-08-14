@@ -20,6 +20,9 @@ class Value:
     def present(self) -> bool:
         return self.value not in (None, "", [], "TBD")
 
+    def explicit_none(self) -> bool:
+        return str(self.value).strip().lower() in {"none", "not applicable", "n/a"}
+
 
 @dataclass
 class ProcessStep:

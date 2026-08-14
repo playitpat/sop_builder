@@ -85,6 +85,16 @@ def apply_demo_clarification(p: ProcessDefinition, text: str) -> None:
         p.required_records = Value(
             "Request ticket and validation email stored in SharePoint", Provenance.USER
         )
+    if "escalat" in low:
+        p.escalation_path = Value(
+            "Blocked requests are escalated to the Head of Analytics", Provenance.USER
+        )
+    if "out of scope" in low:
+        p.out_of_scope = Value("None", Provenance.USER)
+    if "written by" in low:
+        p.document_control_information = Value(
+            {"written_by": "BI Process Excellence Lead"}, Provenance.USER
+        )
 
 
 GAP_RULES = [
@@ -159,6 +169,79 @@ def readiness(p: ProcessDefinition) -> dict:
     }
 
 
+MANDATORY_DRAFT_FIELDS = {
+    "purpose": "Purpose",
+    "in_scope": "In-scope",
+    "out_of_scope": "Out-of-scope",
+    "responsible_role": "Responsible role",
+    "accountable_role": "Accountable role",
+    "process_trigger": "Process trigger",
+    "process_output": "Process output",
+    "approvals": "Approval authority and decision point",
+    "validation_criteria": "Validation criteria",
+    "required_records": "Required records and storage",
+    "escalation_path": "Escalation path",
+}
+
+
+def completeness(p: ProcessDefinition) -> dict:
+    missing = [
+        label
+        for name, label in MANDATORY_DRAFT_FIELDS.items()
+        if not getattr(p, name).present()
+    ]
+    if not p.process_steps:
+        missing.append("Ordered process steps")
+    document_control = (
+        p.document_control_information.value
+        if isinstance(p.document_control_information.value, dict)
+        else {}
+    )
+    if not document_control.get("written_by"):
+        missing.append("SOP author")
+    optional = []
+    for name, label in (
+        ("qd_reference", "QD reference"),
+        ("process_flow_reference", "Process flow"),
+        ("references", "References"),
+        ("general_considerations", "General considerations"),
+    ):
+        value = getattr(p, name)
+        if not value.present() and not value.explicit_none():
+            optional.append(label)
+    return {
+        "ready_for_review": not missing,
+        "blocking": missing,
+        "draft_warnings": optional,
+    }
+
+
+def consolidate_steps(steps: list[ProcessStep]) -> list[ProcessStep]:
+    """Remove exact and strongly overlapping conversational step repetitions."""
+    result = []
+    signatures: list[set[str]] = []
+    for step in steps:
+        tokens = set(re.findall(r"[a-z]{3,}", step.action.lower())) - {
+            "the",
+            "and",
+            "then",
+            "that",
+            "with",
+        }
+        duplicate = any(
+            tokens and len(tokens & prior) / len(tokens | prior) >= 0.78
+            for prior in signatures
+        )
+        if not duplicate:
+            result.append(
+                ProcessStep(
+                    len(result) + 1, step.role or "TBD", step.action, step.provenance
+                )
+            )
+            signatures.append(tokens)
+    return result
+
+
 SECTION_ORDER = [
     "Document Control",
     "Purpose",
@@ -179,8 +262,8 @@ def generate_draft(p: ProcessDefinition, cycle: int = 1) -> dict:
     roles = {
         "Responsible": val(p.responsible_role),
         "Accountable": val(p.accountable_role),
-        "Consulted": ", ".join(val(p.consulted_roles, [])) or "TBD",
-        "Informed": ", ".join(val(p.informed_roles, [])) or "TBD",
+        "Consulted": ", ".join(val(p.consulted_roles, [])) or "None",
+        "Informed": ", ".join(val(p.informed_roles, [])) or "None",
     }
     steps = [
         {
@@ -188,7 +271,7 @@ def generate_draft(p: ProcessDefinition, cycle: int = 1) -> dict:
             "role": s.role or "TBD",
             "action": s.action.rstrip(".") + ".",
         }
-        for s in p.process_steps
+        for s in consolidate_steps(p.process_steps)
     ]
     return {
         "title": val(p.sop_title),
@@ -199,11 +282,11 @@ def generate_draft(p: ProcessDefinition, cycle: int = 1) -> dict:
             "Document Control": val(p.document_control_information, {}),
             "Purpose": val(p.purpose),
             "Scope": {"In-scope": val(p.in_scope), "Out-of-scope": val(p.out_of_scope)},
-            "References and Terminology": val(p.references, []),
+            "References and Terminology": val(p.references, ["None identified"]),
             "Roles and Responsibilities": roles,
             "Process Flow": val(p.process_flow_reference),
             "Procedure": {
-                "General considerations": val(p.general_considerations),
+                "General considerations": val(p.general_considerations, "None"),
                 "Process details": steps,
             },
             "Record of revisions": [
@@ -220,6 +303,7 @@ def generate_draft(p: ProcessDefinition, cycle: int = 1) -> dict:
         "approvals": val(p.approvals),
         "validation": val(p.validation_criteria),
         "records": val(p.required_records),
+        "escalation": val(p.escalation_path),
         "cycle": cycle,
         "provenance_snapshot": p.to_dict(),
     }
@@ -240,16 +324,19 @@ def review_draft(d: dict, cycle: int) -> ReviewResult:
     )
     scope = sections.get("Scope", {})
     check(
-        bool(scope.get("In-scope")) and bool(scope.get("Out-of-scope")),
+        all(
+            value and str(value).strip().upper() != "TBD"
+            for value in (scope.get("In-scope"), scope.get("Out-of-scope"))
+        ),
         "Scope includes in-scope and out-of-scope",
     )
     roles = sections.get("Roles and Responsibilities", {})
     check(
         all(
-            roles.get(x)
+            roles.get(x) and str(roles[x]).strip().upper() != "TBD"
             for x in ("Responsible", "Accountable", "Consulted", "Informed")
         ),
-        "RACI is complete or explicitly TBD",
+        "RACI is complete or explicitly None",
     )
     steps = sections.get("Procedure", {}).get("Process details", [])
     check(
@@ -260,9 +347,11 @@ def review_draft(d: dict, cycle: int) -> ReviewResult:
         ("trigger", "Trigger is defined"),
         ("output", "Output is defined"),
         ("approvals", "Approvals captured or TBD"),
+        ("validation", "Validation criteria captured or TBD"),
         ("records", "Records captured or TBD"),
+        ("escalation", "Escalation path captured or TBD"),
     ):
-        check(bool(d.get(key)), label)
+        check(bool(d.get(key)) and str(d.get(key)).strip().upper() != "TBD", label)
     check(
         bool(sections.get("Process Flow")), "Process flow is supplied or explicitly TBD"
     )

@@ -26,6 +26,7 @@ class ProjectRepository:
             CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY,project_id TEXT,role TEXT,content TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS artifacts(id INTEGER PRIMARY KEY,project_id TEXT,kind TEXT,payload TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS files(id INTEGER PRIMARY KEY,project_id TEXT,path TEXT,validation_json TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+            CREATE TABLE IF NOT EXISTS reviews(id INTEGER PRIMARY KEY,project_id TEXT NOT NULL,reviewer TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'submitted',comment TEXT NOT NULL DEFAULT '',created_at TEXT DEFAULT CURRENT_TIMESTAMP);
             """)
 
     def create(self, title: str) -> str:
@@ -125,3 +126,50 @@ class ProjectRepository:
     def files(self, pid):
         """Backward-compatible alias for callers from the previous MVP iteration."""
         return self.list_generated_files(pid)
+
+    def submit_for_review(self, pid: str, reviewer: str = "") -> None:
+        with self.connect() as c:
+            c.execute(
+                "UPDATE projects SET status='submitted',updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (pid,),
+            )
+            c.execute(
+                "INSERT INTO reviews(project_id,reviewer,status,comment) VALUES(?,?,'submitted','')",
+                (pid, reviewer),
+            )
+
+    def record_review(self, pid: str, status: str, reviewer: str, comment: str) -> None:
+        if status not in {"changes_requested", "validated"}:
+            raise ValueError("Review status must be changes_requested or validated")
+        if not reviewer.strip():
+            raise ValueError("Internal controller name is required")
+        with self.connect() as c:
+            c.execute(
+                "UPDATE projects SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (status, pid),
+            )
+            c.execute(
+                "INSERT INTO reviews(project_id,reviewer,status,comment) VALUES(?,?,?,?)",
+                (pid, reviewer, status, comment),
+            )
+
+    def review_history(self, pid: str):
+        with self.connect() as c:
+            return [
+                dict(row)
+                for row in c.execute(
+                    "SELECT reviewer,status,comment,created_at FROM reviews WHERE project_id=? ORDER BY id",
+                    (pid,),
+                )
+            ]
+
+    def projects_by_status(self, statuses: tuple[str, ...]):
+        placeholders = ",".join("?" for _ in statuses)
+        with self.connect() as c:
+            return [
+                dict(row)
+                for row in c.execute(
+                    f"SELECT id,title,status,updated_at FROM projects WHERE status IN ({placeholders}) ORDER BY updated_at DESC",
+                    statuses,
+                )
+            ]

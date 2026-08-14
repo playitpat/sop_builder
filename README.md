@@ -28,7 +28,9 @@ Package inspection found 39 OOXML parts, 17 structured document tags (content co
 | `src/document.py` | In-place OOXML population and independent validation | Graph/Word automation where appropriate |
 | `app.py` | Streamlit conversational workspace and download | Teams/Copilot Studio front end |
 
-The single chat bar saves each turn, merges newly extracted facts without erasing previous answers, and asks the next relevant governance question. When `OPENAI_API_KEY` is configured, conversation text and the structured process state are sent to the OpenAI Responses API for incremental extraction and targeted questioning. Without a key—or if an API call fails—the conservative local fallback remains usable. Raw knowledge files are never uploaded by this adapter.
+The single chat bar saves each turn, merges newly extracted facts without erasing previous answers, presents one initial maturity/governance assessment in the conversation, and then asks one relevant follow-up at a time. Raw JSON is not shown in the main author experience. When `OPENAI_API_KEY` is configured, conversation text and the structured process state are sent to the OpenAI Responses API for incremental extraction and targeted questioning. Without a key—or if an API call fails—the conservative local fallback remains usable. Raw knowledge files are never uploaded by this adapter.
+
+The primary navigation is intentionally task-based: **Create SOP**, **SOP Library**, and **Internal Review Queue**. The library separates working drafts, submitted SOPs, change requests, and validated SOPs. Automated quality approval remains distinct from human internal-controller validation; controller decisions and comments are retained in SQLite.
 
 ## Word approach and rationale
 
@@ -38,7 +40,7 @@ Validation reopens the ZIP/XML and checks section presence/order, three tables, 
 
 ## Quality review loop
 
-The generator builds a normalized draft from the process definition and provenance snapshot. The logically separate reviewer checks mandatory section order, purpose wording, scope, explicit RACI/TBD, actionable ordered steps and actors, trigger/output, approvals/records, non-invention of flow, vague wording, revision history, and appendices. Blocking failures return suggested revisions. The controller stops when blocking checks pass and score is at least 90, or after three cycles; all draft and review records are persisted. AI improves conversational discovery; deterministic controls remain the final publishing gate.
+The generator consolidates repeated conversational steps and builds a normalized draft from the process definition and provenance snapshot. The logically separate reviewer checks mandatory section order, purpose wording, explicit scope, RACI, actionable ordered steps and actors, trigger/output, approvals, validation, records, escalation, non-invention of flow, vague wording, revision history, and appendices. `TBD` no longer passes mandatory completeness checks. Working drafts may still be downloaded with disclosed warnings, but internal-review submission is blocked until mandatory information and the SOP author are captured. The controller stops when blocking checks pass and score is at least 90, or after three cycles; all draft and review records are persisted.
 
 ## Readiness score
 
@@ -76,7 +78,7 @@ The demo output is `generated/SOP – Power BI Sales Dashboard Product Creation 
 
 - Secrets are environment variables; `.env` is ignored.
 - Conversation/process data and artifact metadata remain in local SQLite.
-- Knowledge documents remain local and the Knowledge Base page supports upload, extracted-text preview, source download, deletion, and named retrieval for TXT, Markdown, and DOCX. PDF files can be stored/downloaded; text extraction requires the declared `pypdf` dependency in the application environment.
+- Knowledge documents and retrieval remain local backend capabilities rather than primary author navigation. The service indexes TXT, Markdown, and DOCX; PDF extraction uses the declared `pypdf` dependency. A future administrator-only surface can manage these sources.
 - Do not place confidential production material in a development checkout. Define retention/access controls before enterprise use.
 - Uploaded image, process-map, and visual-PDF understanding is an experimental future capability and is currently disabled rather than silently sending artifacts externally.
 

@@ -8,6 +8,8 @@ from scripts.run_demo import CLARIFICATION, DESCRIPTION, TITLE
 from src.agents import (
     SECTION_ORDER,
     apply_demo_clarification,
+    completeness,
+    consolidate_steps,
     extract_process,
     first_response,
     generate_draft,
@@ -64,6 +66,19 @@ def test_generated_file_history_and_compatibility_alias(tmp_path):
     assert repo.files(pid) == expected
 
 
+def test_internal_review_workflow_persists_decisions(tmp_path):
+    repo = ProjectRepository(tmp_path / "state.db")
+    pid = repo.create(TITLE)
+    repo.submit_for_review(pid, "Controller One")
+    assert repo.load(pid)["status"] == "submitted"
+    assert repo.projects_by_status(("submitted",))[0]["id"] == pid
+    repo.record_review(pid, "changes_requested", "Controller One", "Clarify scope")
+    assert repo.load(pid)["status"] == "changes_requested"
+    assert repo.review_history(pid)[-1]["comment"] == "Clarify scope"
+    with pytest.raises(ValueError, match="controller name"):
+        repo.record_review(pid, "validated", "", "")
+
+
 def test_first_message_generation_guard():
     msg = "Create an SOP for product hierarchy maintenance."
     assert is_topic_only(msg) and "Please describe the process" in first_response(msg)
@@ -95,6 +110,36 @@ def test_required_section_order_and_generation(complete_process):
     assert list(draft["sections"]) == SECTION_ORDER
     assert draft["sections"]["Purpose"].startswith("The purpose of this SOP is to")
     assert draft["sections"]["Record of revisions"][0]["Version"] == "1.0"
+
+
+def test_completeness_blocks_missing_mandatory_fields(complete_process):
+    assert completeness(complete_process)["ready_for_review"]
+    complete_process.validation_criteria = Value()
+    result = completeness(complete_process)
+    assert not result["ready_for_review"]
+    assert "Validation criteria" in result["blocking"]
+
+
+def test_consolidates_overlapping_conversational_steps():
+    steps = [
+        ProcessStep(
+            1, "Agent", "The Agent updates the ticket and informs the customer."
+        ),
+        ProcessStep(
+            2, "Agent", "The Agent updates the ticket and informs the customer."
+        ),
+        ProcessStep(3, "Manager", "The Manager approves the final resolution."),
+    ]
+    result = consolidate_steps(steps)
+    assert [step.order for step in result] == [1, 2]
+    assert len(result) == 2
+
+
+def test_reviewer_does_not_treat_tbd_as_complete(complete_process):
+    complete_process.out_of_scope = Value("TBD", Provenance.MISSING)
+    review = review_draft(generate_draft(complete_process), 1)
+    assert "Scope includes in-scope and out-of-scope" in review.blocking_issues
+    assert review.score < 100
 
 
 def test_reviewer_blocking_checks(complete_process):
@@ -208,7 +253,8 @@ def test_multi_turn_conversation_preserves_guard_and_asks_targeted_question():
         ai,
     )
     assert mode == "local" and process.process_steps
-    assert response == "Who is accountable for this process?"
+    assert "Who is accountable for this process?" in response
+    assert "Process Maturity Assessment" in response
 
 
 def test_merge_does_not_overwrite_user_governance():

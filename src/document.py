@@ -99,7 +99,14 @@ def populate_template(
         "RolesC": roles["Consulted"],
         "RolesI": roles["Informed"],
         "ProcessFlow": sections["Process Flow"],
-        "ProcedureIntro": f"Trigger: {draft['trigger']}\nOutput: {draft['output']}\nApproval: {draft['approvals']}\nValidation: {draft['validation']}\nRecords: {draft['records']}",
+        "ProcedureIntro": (
+            f"Trigger: {_plain(draft['trigger'])}\n"
+            f"Output: {_plain(draft['output'])}\n"
+            f"Approval: {_plain(draft['approvals'])}\n"
+            f"Validation: {_plain(draft['validation'])}\n"
+            f"Records: {_plain(draft['records'])}\n"
+            f"Escalation: {_plain(draft['escalation'])}"
+        ),
         "GeneralConsiderations": sections["Procedure"]["General considerations"],
         "ProcessDetails": details,
         "Appendix": sections["Appendices"],

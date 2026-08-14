@@ -21,7 +21,9 @@ If it is missing, the BI Analyst works with Data Engineering to make the product
 The BI Analyst updates the product hierarchy in Power BI.
 The BI Analyst refreshes the dashboard and informs the stakeholder."""
 CLARIFICATION = """Analytics Manager is accountable. Business requester validates the dashboard update.
-Analytics Manager approves release. Request ticket and validation email are stored in SharePoint."""
+Analytics Manager approves release. Request ticket and validation email are stored in SharePoint.
+Blocked requests are escalated to the Head of Analytics. No activities are explicitly out of scope.
+Written by BI Process Excellence Lead."""
 
 
 def run(base=Path(".")):
