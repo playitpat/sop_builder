@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import math
 import re
 import textwrap
 
@@ -14,54 +15,115 @@ def mermaid_labels(source: str) -> list[str]:
     ]
 
 
+def _position(
+    index: int,
+    columns: int,
+    box_width: int,
+    horizontal_gap: int,
+    top: int,
+    row_pitch: int,
+) -> tuple[int, int]:
+    row, offset = divmod(index, columns)
+    column = offset if row % 2 == 0 else columns - 1 - offset
+    return 30 + column * (box_width + horizontal_gap), top + row * row_pitch
+
+
+def _arrow(
+    draw: ImageDraw.ImageDraw, start: tuple[int, int], end: tuple[int, int], color: str
+) -> None:
+    draw.line((*start, *end), fill=color, width=5)
+    if start[1] == end[1]:
+        direction = 1 if end[0] > start[0] else -1
+        tip = end
+        draw.polygon(
+            [
+                tip,
+                (tip[0] - direction * 16, tip[1] - 10),
+                (tip[0] - direction * 16, tip[1] + 10),
+            ],
+            fill=color,
+        )
+    else:
+        draw.polygon(
+            [end, (end[0] - 10, end[1] - 16), (end[0] + 10, end[1] - 16)], fill=color
+        )
+
+
 def render_mermaid_png(source: str) -> bytes:
-    """Render the MVP's linear Mermaid subset as a corporate-style process chart."""
+    """Render confirmed linear Mermaid steps as a readable, page-friendly snake chart."""
     labels = mermaid_labels(source)
     if not labels:
         raise ValueError("No supported Mermaid process steps were found")
-    width, box_width, box_height, gap = 1200, 980, 112, 62
-    height = 100 + len(labels) * box_height + (len(labels) - 1) * gap + 60
+
+    width, columns = 1200, 3
+    box_width, box_height = 340, 108
+    horizontal_gap, vertical_gap = 60, 38
+    top = 80
+    row_pitch = box_height + vertical_gap
+    rows = math.ceil(len(labels) / columns)
+    height = top + rows * box_height + max(0, rows - 1) * vertical_gap + 45
     image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
-    font = ImageFont.load_default(size=24)
-    small = ImageFont.load_default(size=20)
+    title_font = ImageFont.load_default(size=26)
+    text_font = ImageFont.load_default(size=16)
+    number_font = ImageFont.load_default(size=18)
     navy, blue, pale, purple = "#102a43", "#1769c2", "#edf5ff", "#7253a6"
     draw.text(
-        (width // 2, 28), "Approved Process Flow", fill=navy, font=font, anchor="ma"
+        (width // 2, 26),
+        "Approved Process Flow",
+        fill=navy,
+        font=title_font,
+        anchor="ma",
     )
-    x = (width - box_width) // 2
-    y = 82
-    for index, label in enumerate(labels, 1):
+
+    positions = [
+        _position(index, columns, box_width, horizontal_gap, top, row_pitch)
+        for index in range(len(labels))
+    ]
+    for index in range(len(positions) - 1):
+        x1, y1 = positions[index]
+        x2, y2 = positions[index + 1]
+        if y1 == y2:
+            if x2 > x1:
+                start, end = (x1 + box_width, y1 + box_height // 2), (
+                    x2 - 8,
+                    y2 + box_height // 2,
+                )
+            else:
+                start, end = (x1, y1 + box_height // 2), (
+                    x2 + box_width + 8,
+                    y2 + box_height // 2,
+                )
+        else:
+            start, end = (x1 + box_width // 2, y1 + box_height), (
+                x2 + box_width // 2,
+                y2 - 8,
+            )
+        _arrow(draw, start, end, blue)
+
+    for index, (label, (x, y)) in enumerate(zip(labels, positions), 1):
         draw.rounded_rectangle(
             (x, y, x + box_width, y + box_height),
-            radius=20,
+            radius=16,
             fill=pale,
             outline=blue,
-            width=4,
+            width=3,
         )
-        draw.ellipse((x + 24, y + 28, x + 80, y + 84), fill=purple)
-        draw.text((x + 52, y + 56), str(index), fill="white", font=small, anchor="mm")
-        wrapped = textwrap.wrap(label, width=82)[:3]
-        line_y = y + box_height / 2 - (len(wrapped) - 1) * 14
+        draw.ellipse((x + 13, y + 34, x + 53, y + 74), fill=purple)
+        draw.text(
+            (x + 33, y + 54), str(index), fill="white", font=number_font, anchor="mm"
+        )
+        wrapped = textwrap.wrap(label, width=34)[:4]
+        line_y = y + box_height / 2 - (len(wrapped) - 1) * 10
         for line in wrapped:
-            draw.text((x + 105, line_y), line, fill=navy, font=small, anchor="lm")
-            line_y += 28
-        if index < len(labels):
-            center = width // 2
-            draw.line(
-                (center, y + box_height, center, y + box_height + gap - 12),
-                fill=blue,
-                width=5,
-            )
-            draw.polygon(
-                [
-                    (center - 12, y + box_height + gap - 24),
-                    (center + 12, y + box_height + gap - 24),
-                    (center, y + box_height + gap - 6),
-                ],
-                fill=blue,
-            )
-        y += box_height + gap
+            draw.text((x + 67, line_y), line, fill=navy, font=text_font, anchor="lm")
+            line_y += 21
+
     output = io.BytesIO()
     image.save(output, format="PNG", optimize=True)
     return output.getvalue()
+
+
+def png_dimensions(data: bytes) -> tuple[int, int]:
+    with Image.open(io.BytesIO(data)) as image:
+        return image.size

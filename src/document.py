@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
-from .process_flow import render_mermaid_png
+from .process_flow import png_dimensions, render_mermaid_png
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
@@ -84,7 +84,9 @@ def _replace_in_paragraphs(root, replacements):
                 node.text = ""
 
 
-def _insert_process_flow_drawing(root, relationship_id: str) -> None:
+def _insert_process_flow_drawing(
+    root, relationship_id: str, width_emu: int, height_emu: int
+) -> None:
     for sdt in root.findall(".//" + W + "sdt"):
         tag = sdt.find("./" + W + "sdtPr/" + W + "tag")
         if tag is None or tag.get(W + "val") != "ProcessFlow":
@@ -94,7 +96,9 @@ def _insert_process_flow_drawing(root, relationship_id: str) -> None:
             return
         drawing = ET.SubElement(run, W + "drawing")
         inline = ET.SubElement(drawing, WP + "inline")
-        ET.SubElement(inline, WP + "extent", {"cx": "5486400", "cy": "4114800"})
+        ET.SubElement(
+            inline, WP + "extent", {"cx": str(width_emu), "cy": str(height_emu)}
+        )
         ET.SubElement(
             inline, WP + "docPr", {"id": "9901", "name": "Approved Process Flow"}
         )
@@ -115,7 +119,9 @@ def _insert_process_flow_drawing(root, relationship_id: str) -> None:
         shape = ET.SubElement(picture, PIC + "spPr")
         transform = ET.SubElement(shape, A + "xfrm")
         ET.SubElement(transform, A + "off", {"x": "0", "y": "0"})
-        ET.SubElement(transform, A + "ext", {"cx": "5486400", "cy": "4114800"})
+        ET.SubElement(
+            transform, A + "ext", {"cx": str(width_emu), "cy": str(height_emu)}
+        )
         geometry = ET.SubElement(shape, A + "prstGeom", {"prst": "rect"})
         ET.SubElement(geometry, A + "avLst")
         return
@@ -149,6 +155,11 @@ def populate_template(
         if flow_source.startswith("flowchart ")
         else None
     )
+    flow_extent = None
+    if flow_png:
+        pixel_width, pixel_height = png_dimensions(flow_png)
+        width_emu = 5486400
+        flow_extent = (width_emu, round(width_emu * pixel_height / pixel_width))
     values = {
         "WriterName": dc.get("written_by", "TBD"),
         "WrittenDate": dc.get("written_date", "TBD"),
@@ -183,8 +194,10 @@ def populate_template(
             if info.filename == "word/document.xml":
                 root = ET.fromstring(data)
                 _replace_sdt(root, values)
-                if flow_png:
-                    _insert_process_flow_drawing(root, "rIdSopProcessFlow")
+                if flow_png and flow_extent:
+                    _insert_process_flow_drawing(
+                        root, "rIdSopProcessFlow", flow_extent[0], flow_extent[1]
+                    )
                 # Populate the existing revision row without rebuilding its table.
                 texts = root.findall(".//" + W + "t")
                 rev = False

@@ -25,6 +25,7 @@ from src.conversation import handle_turn, merge_updates
 from src.knowledge import LocalKnowledgeService
 from src.models import ProcessDefinition, ProcessStep, Provenance, Value
 from src.openai_service import OpenAIService
+from src.process_flow import png_dimensions, render_mermaid_png
 from src.repository import ProjectRepository
 
 
@@ -242,6 +243,16 @@ def test_approved_mermaid_flow_is_rendered_as_word_image(tmp_path, complete_proc
         assert b"sop_process_flow.png" in document_xml
         assert b"rIdSopProcessFlow" in document_xml
     assert validate_docx(out)["valid"]
+
+
+def test_long_process_flow_uses_page_friendly_landscape_grid():
+    source = "flowchart TD\n" + "\n".join(
+        f'    S{index}["Role {index}: Complete onboarding action {index}"]'
+        for index in range(1, 17)
+    )
+    width, height = png_dimensions(render_mermaid_png(source))
+    assert width == 1200
+    assert 0.7 <= height / width <= 0.9
 
 
 def test_source_documents_are_organized():

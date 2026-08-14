@@ -92,7 +92,7 @@ Submitted SOPs appear in the **Internal Review Queue**. A controller can downloa
 
 ### Process visualization
 
-The application derives Mermaid source only from confirmed ordered steps. The author previews a rendered flowchart and must explicitly approve it; otherwise Process Flow remains TBD. Approved flowcharts are rendered locally to PNG and embedded in the existing Word Process Flow content control. The current renderer supports a linear Mermaid subset; decision diamonds and complex branching are a future enhancement.
+The application derives Mermaid source only from confirmed ordered steps. The author previews a rendered flowchart and must explicitly approve it; otherwise Process Flow remains TBD. Approved flowcharts are rendered locally to PNG and embedded in the existing Word Process Flow content control. Longer flows use a page-friendly three-column snake layout, and Word image dimensions preserve the PNG aspect ratio instead of compressing a tall chart. The current renderer supports a linear Mermaid subset; decision diamonds and complex branching are a future enhancement.
 
 ### Persistence and SOP lifecycle
 
