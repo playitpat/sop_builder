@@ -6,6 +6,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
 PLACEHOLDER = "Click or tap here to enter text."
 REQUIRED = [
     "Document Control",
@@ -37,10 +38,22 @@ def _replace_sdt(root, values):
         name = tag.get(W + "val") if tag is not None else "ProcedureIntro"
         text = _plain(values.get(name, "TBD"))
         nodes = sdt.findall(".//" + W + "t")
-        if nodes:
-            nodes[0].text = text
-            for n in nodes[1:]:
-                n.text = ""
+        runs = sdt.findall(".//" + W + "r")
+        if nodes and runs:
+            target_run = runs[0]
+            for child in list(target_run):
+                if child.tag != W + "rPr":
+                    target_run.remove(child)
+            for index, line in enumerate(text.splitlines() or [""]):
+                if index:
+                    ET.SubElement(target_run, W + "br")
+                node = ET.SubElement(target_run, W + "t")
+                node.set(XML_SPACE, "preserve")
+                node.text = line
+            for run in runs[1:]:
+                for child in list(run):
+                    if child.tag != W + "rPr":
+                        run.remove(child)
 
 
 def _replace_all(root, old, new):

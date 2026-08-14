@@ -16,6 +16,42 @@ QUESTION_PRIORITY = [
     "responsible",
 ]
 
+FIELD_LABELS = {
+    "document_control_information.written_by": "the SOP author name and function title",
+    "document_control_information": "document control information",
+    "responsible_role": "Responsible role",
+    "accountable_role": "Accountable role",
+    "in_scope": "in-scope activities",
+    "out_of_scope": "out-of-scope activities",
+}
+
+
+def _unwrap_ai_value(
+    value: Any, default_provenance: Provenance
+) -> tuple[Any, Provenance]:
+    if (
+        isinstance(value, dict)
+        and "value" in value
+        and set(value).issubset({"value", "provenance"})
+    ):
+        raw_provenance = value.get("provenance", default_provenance.value)
+        try:
+            provenance = Provenance(raw_provenance)
+        except ValueError:
+            provenance = default_provenance
+        return value.get("value"), provenance
+    return value, default_provenance
+
+
+def clean_assistant_message(message: str) -> str:
+    """Hide internal schema names and enforce one conversational question."""
+    cleaned = message
+    for internal, label in FIELD_LABELS.items():
+        cleaned = cleaned.replace(internal, label)
+    if cleaned.count("?") > 1:
+        cleaned = cleaned[: cleaned.find("?") + 1]
+    return cleaned.strip()
+
 
 def assessment_message(process: ProcessDefinition, next_prompt: str) -> str:
     maturity = readiness(process)
@@ -53,6 +89,7 @@ def merge_updates(
     if not isinstance(updates, dict):
         return
     for name, value in updates.items():
+        value, value_provenance = _unwrap_ai_value(value, provenance)
         if name == "process_steps" and isinstance(value, list):
             existing = {step.action.lower() for step in process.process_steps}
             for item in value:
@@ -70,7 +107,7 @@ def merge_updates(
                             len(process.process_steps) + 1,
                             role,
                             action,
-                            provenance,
+                            value_provenance,
                         )
                     )
                     existing.add(action.lower())
@@ -81,7 +118,7 @@ def merge_updates(
                 Provenance.INFERRED,
                 Provenance.MISSING,
             ):
-                setattr(process, name, Value(value, provenance))
+                setattr(process, name, Value(value, value_provenance))
     process.validate()
 
 
@@ -212,7 +249,7 @@ def handle_turn(
                 history + [{"role": "user", "content": message}], process.to_dict()
             )
             merge_updates(process, result.get("updates", {}))
-            question = str(result["assistant_message"])
+            question = clean_assistant_message(str(result["assistant_message"]))
             return (
                 assessment_message(process, question)
                 if not had_steps and process.process_steps

@@ -242,6 +242,31 @@ def consolidate_steps(steps: list[ProcessStep]) -> list[ProcessStep]:
     return result
 
 
+def normalized_purpose(purpose: Value, title: Value) -> str:
+    text = str(purpose.value or "").strip()
+    required = "The purpose of this SOP is to"
+    if text.lower().startswith(required.lower()):
+        return required + text[len(required) :]
+    subject = (
+        text.rstrip(".")
+        or f"standardize {str(title.value or 'the documented process').lower()}"
+    )
+    subject = re.sub(r"^(the purpose (?:of this SOP )?is )", "", subject, flags=re.I)
+    return f"{required} {subject[0].lower() + subject[1:]}."
+
+
+def mermaid_from_process(p: ProcessDefinition) -> str:
+    """Build a preview from confirmed steps; it must be user-approved before use."""
+    steps = consolidate_steps(p.process_steps)
+    lines = ["flowchart TD"]
+    for index, step in enumerate(steps):
+        label = re.sub(r"[\[\]{}]", "", f"{step.role}: {step.action.rstrip('.')}")
+        lines.append(f'    S{index + 1}["{label}"]')
+        if index:
+            lines.append(f"    S{index} --> S{index + 1}")
+    return "\n".join(lines)
+
+
 SECTION_ORDER = [
     "Document Control",
     "Purpose",
@@ -280,7 +305,7 @@ def generate_draft(p: ProcessDefinition, cycle: int = 1) -> dict:
         "effective_date": "TBD",
         "sections": {
             "Document Control": val(p.document_control_information, {}),
-            "Purpose": val(p.purpose),
+            "Purpose": normalized_purpose(p.purpose, p.sop_title),
             "Scope": {"In-scope": val(p.in_scope), "Out-of-scope": val(p.out_of_scope)},
             "References and Terminology": val(p.references, ["None identified"]),
             "Roles and Responsibilities": roles,
@@ -385,11 +410,29 @@ def review_loop(
     p: ProcessDefinition, max_cycles: int = 3
 ) -> tuple[dict, list[ReviewResult]]:
     reviews = []
-    draft = {}
+    draft = generate_draft(p, 1)
     for cycle in range(1, min(max_cycles, 3) + 1):
-        draft = generate_draft(p, cycle)
+        draft["cycle"] = cycle
         result = review_draft(draft, cycle)
         reviews.append(result)
         if not result.blocking_issues and result.score >= 90:
+            break
+        revised = False
+        if "Purpose uses mandatory opening" in result.blocking_issues:
+            draft["sections"]["Purpose"] = normalized_purpose(
+                Value(draft["sections"].get("Purpose")), Value(draft.get("title"))
+            )
+            revised = True
+        if "Vague expressions are avoided" in result.blocking_issues:
+            for step in draft["sections"]["Procedure"]["Process details"]:
+                cleaned = re.sub(
+                    r"\b(?:etc\.|and so on|if applicable|where needed)\b",
+                    "the explicitly defined items",
+                    step["action"],
+                    flags=re.I,
+                )
+                revised = revised or cleaned != step["action"]
+                step["action"] = cleaned
+        if not revised:
             break
     return draft, reviews

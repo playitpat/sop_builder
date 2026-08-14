@@ -152,6 +152,16 @@ class ProjectRepository:
                 "INSERT INTO reviews(project_id,reviewer,status,comment) VALUES(?,?,?,?)",
                 (pid, reviewer, status, comment),
             )
+            if status == "changes_requested":
+                feedback = (
+                    f"⚠️ **Internal review corrections requested by {reviewer}.**\n\n"
+                    f"{comment or 'Please contact the internal controller for details.'}\n\n"
+                    "Reply here with the corrected information, then run the quality review again."
+                )
+                c.execute(
+                    "INSERT INTO messages(project_id,role,content) VALUES(?,'assistant',?)",
+                    (pid, feedback),
+                )
 
     def review_history(self, pid: str):
         with self.connect() as c:

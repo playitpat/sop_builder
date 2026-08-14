@@ -1,5 +1,6 @@
 from pathlib import Path
 import hashlib
+import xml.etree.ElementTree as ET
 from zipfile import ZipFile
 
 import pytest
@@ -43,6 +44,17 @@ def test_process_definition_validation():
         p.validate()
 
 
+def test_process_definition_migrates_nested_ai_values():
+    data = ProcessDefinition().to_dict()
+    data["process_trigger"]["value"] = {
+        "value": "Customer submits a complaint",
+        "provenance": "user provided",
+    }
+    restored = ProcessDefinition.from_dict(data)
+    assert restored.process_trigger.value == "Customer submits a complaint"
+    assert restored.process_trigger.provenance == Provenance.USER
+
+
 def test_persistence_and_session_restoration(tmp_path, complete_process):
     repo = ProjectRepository(tmp_path / "state.db")
     pid = repo.create(TITLE)
@@ -75,6 +87,9 @@ def test_internal_review_workflow_persists_decisions(tmp_path):
     repo.record_review(pid, "changes_requested", "Controller One", "Clarify scope")
     assert repo.load(pid)["status"] == "changes_requested"
     assert repo.review_history(pid)[-1]["comment"] == "Clarify scope"
+    assert "Clarify scope" in repo.messages(pid)[-1]["content"]
+    repo.record_review(pid, "validated", "Controller One", "Corrections accepted")
+    assert repo.projects_by_status(("validated",))[0]["id"] == pid
     with pytest.raises(ValueError, match="controller name"):
         repo.record_review(pid, "validated", "", "")
 
@@ -149,7 +164,9 @@ def test_reviewer_blocking_checks(complete_process):
     assert review.blocking_issues and review.score < 90
 
 
-def test_review_loop_maximum_iterations(complete_process, monkeypatch):
+def test_review_loop_stops_when_issue_has_no_safe_automatic_revision(
+    complete_process, monkeypatch
+):
     import src.agents as agents
 
     original = agents.review_draft
@@ -162,7 +179,7 @@ def test_review_loop_maximum_iterations(complete_process, monkeypatch):
 
     monkeypatch.setattr(agents, "review_draft", always_fail)
     _, reviews = agents.review_loop(complete_process, max_cycles=10)
-    assert len(reviews) == 3
+    assert len(reviews) == 1
 
 
 def test_knowledge_retrieval(tmp_path):
@@ -200,6 +217,10 @@ def test_template_population_placeholders_integrity_and_revision(
         body = z.read("word/document.xml").decode("utf-8")
         assert PLACEHOLDER not in body and "New SOP" in body and "1.0" in body
         assert "word/styles.xml" in z.namelist() and "word/footer1.xml" in z.namelist()
+        root = ET.fromstring(z.read("word/document.xml"))
+        assert root.findall(
+            ".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}br"
+        )
     assert hashlib.sha256(template.read_bytes()).hexdigest() == before
 
 
@@ -290,6 +311,27 @@ def test_merge_accepts_ai_process_steps_as_strings_or_objects():
         ("TBD", "The Service Agent receives the complaint."),
         ("Service Agent", "The Service Agent reviews the complaint."),
     ]
+
+
+def test_merge_unwraps_ai_value_objects_and_hides_internal_names():
+    from src.conversation import clean_assistant_message
+
+    process = ProcessDefinition(sop_title=Value("Complaint handling", Provenance.USER))
+    merge_updates(
+        process,
+        {
+            "process_trigger": {
+                "value": "Customer submits a complaint",
+                "provenance": "user provided",
+            }
+        },
+    )
+    assert process.process_trigger.value == "Customer submits a complaint"
+    assert process.process_trigger.provenance == Provenance.USER
+    cleaned = clean_assistant_message(
+        "Who is responsible_role? Who is document_control_information.written_by?"
+    )
+    assert cleaned == "Who is Responsible role?"
 
 
 def test_merge_ignores_non_mapping_ai_updates():

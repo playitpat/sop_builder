@@ -2,10 +2,10 @@ from pathlib import Path
 
 import streamlit as st
 
-from src.agents import completeness, readiness, review_loop
+from src.agents import completeness, mermaid_from_process, readiness, review_loop
 from src.conversation import handle_turn
 from src.document import populate_template, validate_docx
-from src.models import ProcessDefinition
+from src.models import ProcessDefinition, Provenance, Value
 from src.openai_service import OpenAIService
 from src.repository import ProjectRepository
 
@@ -37,7 +37,7 @@ def load_project(project_id: str) -> None:
     if loaded:
         st.session_state.project_id = project_id
         st.session_state.process = loaded["process"]
-        for key in ("reviews", "validation", "output"):
+        for key in ("reviews", "reviewed_draft", "submitted"):
             st.session_state.pop(key, None)
 
 
@@ -63,35 +63,46 @@ def render_review_result(project_id: str, process: ProcessDefinition) -> None:
     if "reviews" not in st.session_state:
         return
     with st.chat_message("assistant"):
+        if st.session_state.get("submitted"):
+            st.success(
+                "SOP generated and submitted for internal review. Track it in the Internal Review Queue."
+            )
+            return
         st.markdown("### Automated SOP quality review")
         for review in st.session_state.reviews:
             icon = "✅" if not review.blocking_issues and review.score >= 90 else "❌"
             st.markdown(
-                f"{icon} **Draft {review.cycle} → Review {review.cycle}: {review.score}/100**"
+                f"{icon} **Automated review {review.cycle}: {review.score}/100**"
             )
             for issue in review.blocking_issues:
                 st.markdown(f"- ❌ {issue}")
             for recommendation in review.recommendations:
                 st.markdown(f"- ⚠️ {recommendation}")
-        validation = st.session_state.validation
-        if validation["valid"]:
-            st.success("Word document validation passed.")
-            output = Path(st.session_state.output)
-            st.download_button(
-                "Download working SOP draft", output.read_bytes(), file_name=output.name
+        approved = (
+            not st.session_state.reviews[-1].blocking_issues
+            and st.session_state.reviews[-1].score >= 90
+        )
+        if approved:
+            st.success(
+                "Automated quality checks passed. The SOP is ready for human review."
             )
-            state = completeness(process)
-            if state["ready_for_review"]:
-                if st.button("Submit this SOP for internal review", type="primary"):
+            if st.button("Generate and submit for internal review", type="primary"):
+                output = populate_template(TEMPLATE, st.session_state.reviewed_draft)
+                validation = validate_docx(output)
+                if validation["valid"]:
+                    repo.generated_file(project_id, output, validation)
+                    repo.save_process(project_id, process, "generated")
                     repo.submit_for_review(project_id)
-                    st.success("Submitted to the Internal Review Queue.")
-            else:
-                st.warning(
-                    "Internal review submission is blocked until mandatory fields are resolved: "
-                    + ", ".join(state["blocking"])
-                )
+                    st.session_state.submitted = True
+                    st.rerun()
+                else:
+                    st.error(
+                        "Word validation failed: " + "; ".join(validation["errors"])
+                    )
         else:
-            st.error("Word validation failed: " + "; ".join(validation["errors"]))
+            st.warning(
+                "No document was generated. Continue the conversation to resolve the blocking issue."
+            )
 
 
 def render_conversation() -> None:
@@ -99,8 +110,22 @@ def render_conversation() -> None:
         '<div class="hero"><h1>Danone SOP Builder</h1><p>Describe the process naturally. The agent will assess it once, then ask one targeted question at a time.</p></div>',
         unsafe_allow_html=True,
     )
+    corrections = repo.projects_by_status(("changes_requested",))
+    if corrections:
+        with st.expander(
+            f"⚠️ Corrections requested ({len(corrections)})", expanded=True
+        ):
+            st.caption(
+                "Open an SOP to see the controller's comments in the conversation and provide corrections."
+            )
+            for item in corrections:
+                if st.button(
+                    f"Open {item['title']}", key=f"author-correction-{item['id']}"
+                ):
+                    load_project(item["id"])
+                    st.rerun()
     if st.button("＋ Start a new SOP"):
-        for key in ("project_id", "process", "reviews", "validation", "output"):
+        for key in ("project_id", "process", "reviews", "reviewed_draft", "submitted"):
             st.session_state.pop(key, None)
         st.rerun()
     project_id = st.session_state.get("project_id")
@@ -116,27 +141,45 @@ def render_conversation() -> None:
     if project_id:
         status_summary(process)
         state = completeness(process)
-        if process.process_steps:
-            label = (
-                "Generate reviewed working draft"
-                if state["blocking"]
-                else "Generate reviewed SOP"
-            )
-            if st.button(label, type="primary"):
+        if state["ready_for_review"] and process.process_flow_reference.value in (
+            None,
+            "",
+        ):
+            with st.expander("Optional: review a proposed process flow", expanded=True):
+                st.caption(
+                    "Built only from confirmed steps and ignored unless you approve it."
+                )
+                proposed_flow = mermaid_from_process(process)
+                st.code(proposed_flow, language="mermaid")
+                first, second = st.columns(2)
+                with first:
+                    if st.button("Approve proposed flow"):
+                        process.process_flow_reference = Value(
+                            proposed_flow, Provenance.USER
+                        )
+                        repo.save_process(project_id, process, "discovery")
+                        st.session_state.process = process
+                        st.rerun()
+                with second:
+                    if st.button("Keep process flow as TBD"):
+                        process.process_flow_reference = Value("TBD", Provenance.USER)
+                        repo.save_process(project_id, process, "discovery")
+                        st.session_state.process = process
+                        st.rerun()
+        if state["ready_for_review"]:
+            if st.button("Run automated quality review", type="primary"):
                 draft, reviews = review_loop(process)
                 repo.artifact(project_id, "draft", draft)
                 for review in reviews:
                     repo.artifact(project_id, "review", review.__dict__)
-                output = populate_template(TEMPLATE, draft)
-                validation = validate_docx(output)
-                repo.generated_file(project_id, output, validation)
-                repo.save_process(project_id, process, "generated")
                 st.session_state.reviews = reviews
-                st.session_state.validation = validation
-                st.session_state.output = str(output)
+                st.session_state.reviewed_draft = draft
                 st.rerun()
     prompt = st.chat_input("Describe the process or answer the latest question…")
     if prompt:
+        st.session_state.pop("reviews", None)
+        st.session_state.pop("reviewed_draft", None)
+        st.session_state.pop("submitted", None)
         if not project_id:
             project_id = repo.create(prompt[:80].strip() or "Untitled SOP")
             st.session_state.project_id = project_id
@@ -154,30 +197,13 @@ def render_conversation() -> None:
 
 def render_library() -> None:
     st.title("SOP Library")
-    st.caption(
-        "Working drafts, submissions, validated SOPs, and their complete review history."
-    )
-    projects = repo.list_projects()
+    st.caption("Only SOPs validated by an internal controller are shown here.")
+    projects = repo.projects_by_status(("validated",))
     if not projects:
-        st.info("No SOPs have been created yet.")
+        st.info("No SOPs have been validated yet.")
         return
-    filters = st.multiselect(
-        "Status",
-        ["discovery", "generated", "submitted", "changes_requested", "validated"],
-        default=["generated", "submitted", "changes_requested", "validated"],
-    )
     for project in projects:
-        if filters and project["status"] not in filters:
-            continue
-        icon = {
-            "validated": "✅",
-            "submitted": "🕐",
-            "changes_requested": "⚠️",
-            "generated": "📝",
-        }.get(project["status"], "💬")
-        with st.expander(
-            f"{icon} {project['title']} · {project['status'].replace('_', ' ').title()}"
-        ):
+        with st.expander(f"✅ {project['title']} · Validated"):
             st.caption(f"Last updated: {project['updated_at']}")
             history = repo.review_history(project["id"])
             for item in history:
@@ -193,9 +219,6 @@ def render_library() -> None:
                         file_name=path.name,
                         key=f"library-{project['id']}-{index}",
                     )
-            if st.button("Resume conversation", key=f"resume-{project['id']}"):
-                load_project(project["id"])
-                st.success("Loaded. Select Create SOP to continue.")
 
 
 def render_review_queue() -> None:
@@ -224,7 +247,7 @@ def render_review_queue() -> None:
             first, second = st.columns(2)
             with first:
                 if st.button(
-                    "Request changes",
+                    "Send corrections to author",
                     key=f"changes-{project['id']}",
                     disabled=not reviewer.strip(),
                 ):

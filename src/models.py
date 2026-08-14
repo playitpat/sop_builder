@@ -92,13 +92,23 @@ class ProcessDefinition:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ProcessDefinition":
-        kwargs: dict[str, Any] = {
-            n: Value(
-                data.get(n, {}).get("value"),
-                Provenance(data.get(n, {}).get("provenance", Provenance.MISSING)),
-            )
-            for n in FIELDS
-        }
+        kwargs: dict[str, Any] = {}
+        for name in FIELDS:
+            stored = data.get(name, {})
+            value = stored.get("value")
+            provenance = Provenance(stored.get("provenance", Provenance.MISSING))
+            if (
+                isinstance(value, dict)
+                and "value" in value
+                and set(value).issubset({"value", "provenance"})
+            ):
+                nested = value
+                value = nested.get("value")
+                try:
+                    provenance = Provenance(nested.get("provenance", provenance.value))
+                except ValueError:
+                    pass
+            kwargs[name] = Value(value, provenance)
         kwargs["process_steps"] = [
             ProcessStep(
                 **{**x, "provenance": Provenance(x.get("provenance", Provenance.USER))}

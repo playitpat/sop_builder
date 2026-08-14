@@ -30,7 +30,7 @@ Package inspection found 39 OOXML parts, 17 structured document tags (content co
 
 The single chat bar saves each turn, merges newly extracted facts without erasing previous answers, presents one initial maturity/governance assessment in the conversation, and then asks one relevant follow-up at a time. Raw JSON is not shown in the main author experience. When `OPENAI_API_KEY` is configured, conversation text and the structured process state are sent to the OpenAI Responses API for incremental extraction and targeted questioning. Without a key—or if an API call fails—the conservative local fallback remains usable. Raw knowledge files are never uploaded by this adapter.
 
-The primary navigation is intentionally task-based: **Create SOP**, **SOP Library**, and **Internal Review Queue**. The library separates working drafts, submitted SOPs, change requests, and validated SOPs. Automated quality approval remains distinct from human internal-controller validation; controller decisions and comments are retained in SQLite.
+The primary navigation is intentionally task-based: **Create SOP**, **SOP Library**, and **Internal Review Queue**. The library contains only SOPs validated by a human internal controller. Submitted SOPs remain in the review queue; requested corrections are injected into the author's saved conversation for response and resubmission. Automated quality approval remains distinct from human validation, and controller decisions and comments are retained in SQLite.
 
 ## Word approach and rationale
 
@@ -40,7 +40,9 @@ Validation reopens the ZIP/XML and checks section presence/order, three tables, 
 
 ## Quality review loop
 
-The generator consolidates repeated conversational steps and builds a normalized draft from the process definition and provenance snapshot. The logically separate reviewer checks mandatory section order, purpose wording, explicit scope, RACI, actionable ordered steps and actors, trigger/output, approvals, validation, records, escalation, non-invention of flow, vague wording, revision history, and appendices. `TBD` no longer passes mandatory completeness checks. Working drafts may still be downloaded with disclosed warnings, but internal-review submission is blocked until mandatory information and the SOP author are captured. The controller stops when blocking checks pass and score is at least 90, or after three cycles; all draft and review records are persisted.
+The generator consolidates repeated conversational steps, normalizes safe writing issues such as the mandatory purpose opening, and builds a draft from the process definition and provenance snapshot. The logically separate reviewer checks mandatory section order, purpose wording, explicit scope, RACI, actionable ordered steps and actors, trigger/output, approvals, validation, records, escalation, non-invention of flow, vague wording, revision history, and appendices. `TBD` does not pass mandatory completeness checks. No Word file is offered while discovery is incomplete or automated review is failing. After automated checks pass, one action generates the DOCX and submits it for human review; download is available from the validated SOP Library.
+
+When process information is complete, the UI can propose Mermaid source generated only from confirmed ordered steps. The user must explicitly approve it or retain `TBD`; the current MVP stores approved Mermaid source in the Process Flow section but does not yet render it as a Word image.
 
 ## Readiness score
 

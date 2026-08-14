@@ -43,7 +43,7 @@ Return JSON only with keys assistant_message, updates, and ready_to_generate.
 updates maps ProcessDefinition field names to values explicitly supported by the user messages.
 process_steps must be an array of objects shaped exactly as {"role": "Role name or TBD", "action": "Action text"}; never return step strings.
 Never invent Responsible, Accountable, approvals, validation, records, escalation, or process flow.
-Ask at most two short targeted questions, prioritizing the most important missing governance facts.
+Ask exactly one short targeted question, prioritizing the most important missing governance fact. Never expose internal field names.
 After governance, collect in-scope, out-of-scope, and document_control_information.written_by before saying the SOP is ready for internal review.
 Do not ask for information already present. Purpose must begin 'The purpose of this SOP is to'."""
         payload = {
