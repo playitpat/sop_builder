@@ -54,6 +54,16 @@ def test_persistence_and_session_restoration(tmp_path, complete_process):
     ]["payload"] == {"x": 1}
 
 
+def test_generated_file_history_and_compatibility_alias(tmp_path):
+    repo = ProjectRepository(tmp_path / "state.db")
+    pid = repo.create(TITLE)
+    repo.generated_file(pid, "generated/example.docx", {"valid": True, "errors": []})
+    expected = repo.list_generated_files(pid)
+    assert expected[0]["path"] == "generated/example.docx"
+    assert expected[0]["validation"] == {"valid": True, "errors": []}
+    assert repo.files(pid) == expected
+
+
 def test_first_message_generation_guard():
     msg = "Create an SOP for product hierarchy maintenance."
     assert is_topic_only(msg) and "Please describe the process" in first_response(msg)

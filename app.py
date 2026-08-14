@@ -135,7 +135,12 @@ def render_conversation() -> None:
                         document,
                         file_name=Path(st.session_state.output).name,
                     )
-        previous_files = repo.files(project_id)
+        # A hot-reloaded Streamlit process may still hold an older repository class.
+        # Do not break the conversation; a full restart restores file history.
+        file_loader = getattr(repo, "list_generated_files", None) or getattr(
+            repo, "files", None
+        )
+        previous_files = file_loader(project_id) if callable(file_loader) else []
         if previous_files:
             with st.expander("Previously generated documents"):
                 for index, item in enumerate(previous_files):

@@ -111,7 +111,8 @@ class ProjectRepository:
                 (pid, str(path), json.dumps(validation)),
             )
 
-    def files(self, pid):
+    def list_generated_files(self, pid):
+        """Return generated files newest first for a persisted SOP project."""
         with self.connect() as c:
             return [
                 {**dict(row), "validation": json.loads(row["validation_json"])}
@@ -120,3 +121,7 @@ class ProjectRepository:
                     (pid,),
                 )
             ]
+
+    def files(self, pid):
+        """Backward-compatible alias for callers from the previous MVP iteration."""
+        return self.list_generated_files(pid)
