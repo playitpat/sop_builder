@@ -10,6 +10,8 @@ This project explores a safer product pattern. **Danone SOP Builder** conducts a
 
 The result is a working local MVP—not a production compliance system—that demonstrates how generative AI, deterministic controls, document engineering, and human governance can work together.
 
+<img width="2954" height="1694" alt="image" src="https://github.com/user-attachments/assets/90019d60-cd16-4596-b192-784561338ea0" />
+
 ## Business value
 
 The product is designed around four potential business outcomes:
