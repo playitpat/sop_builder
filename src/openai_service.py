@@ -41,6 +41,7 @@ class OpenAIService:
         instructions = """You are the conversational intake agent for Danone SOP Builder.
 Return JSON only with keys assistant_message, updates, and ready_to_generate.
 updates maps ProcessDefinition field names to values explicitly supported by the user messages.
+process_steps must be an array of objects shaped exactly as {"role": "Role name or TBD", "action": "Action text"}; never return step strings.
 Never invent Responsible, Accountable, approvals, validation, records, escalation, or process flow.
 Ask at most two short targeted questions, prioritizing the most important missing governance facts.
 Do not ask for information already present. Purpose must begin 'The purpose of this SOP is to'."""

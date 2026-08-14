@@ -214,6 +214,34 @@ def test_merge_does_not_overwrite_user_governance():
     assert not hasattr(process, "unknown")
 
 
+def test_merge_accepts_ai_process_steps_as_strings_or_objects():
+    process = ProcessDefinition(sop_title=Value("Complaint handling", Provenance.USER))
+    merge_updates(
+        process,
+        {
+            "process_steps": [
+                "The Service Agent receives the complaint.",
+                {
+                    "role": "Service Agent",
+                    "action": "The Service Agent reviews the complaint.",
+                },
+                42,
+                {"role": "Service Agent"},
+            ]
+        },
+    )
+    assert [(step.role, step.action) for step in process.process_steps] == [
+        ("TBD", "The Service Agent receives the complaint."),
+        ("Service Agent", "The Service Agent reviews the complaint."),
+    ]
+
+
+def test_merge_ignores_non_mapping_ai_updates():
+    process = ProcessDefinition(sop_title=Value("Complaint handling", Provenance.USER))
+    merge_updates(process, "invalid updates")
+    assert process.process_steps == []
+
+
 def test_knowledge_upload_preview_download_and_delete(tmp_path):
     service = LocalKnowledgeService(tmp_path)
     source = service.add(

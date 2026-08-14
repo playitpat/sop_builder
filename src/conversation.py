@@ -19,24 +19,34 @@ QUESTION_PRIORITY = [
 
 def merge_updates(
     process: ProcessDefinition,
-    updates: dict[str, Any],
+    updates: Any,
     provenance: Provenance = Provenance.USER,
 ) -> None:
     """Merge supported fields without erasing previous state or accepting unknown fields."""
+    if not isinstance(updates, dict):
+        return
     for name, value in updates.items():
         if name == "process_steps" and isinstance(value, list):
             existing = {step.action.lower() for step in process.process_steps}
             for item in value:
-                action = str(item.get("action", "")).strip()
+                if isinstance(item, str):
+                    action = item.strip()
+                    role = "TBD"
+                elif isinstance(item, dict):
+                    action = str(item.get("action", "")).strip()
+                    role = str(item.get("role") or "TBD").strip()
+                else:
+                    continue
                 if action and action.lower() not in existing:
                     process.process_steps.append(
                         ProcessStep(
                             len(process.process_steps) + 1,
-                            str(item.get("role") or "TBD"),
+                            role,
                             action,
                             provenance,
                         )
                     )
+                    existing.add(action.lower())
             continue
         if name in FIELDS and value not in (None, "", []):
             current = getattr(process, name)
