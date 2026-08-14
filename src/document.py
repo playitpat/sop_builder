@@ -5,8 +5,16 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
+from .process_flow import render_mermaid_png
+
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
+WP = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}"
+A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+PIC = "{http://schemas.openxmlformats.org/drawingml/2006/picture}"
+R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+REL = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+CT = "{http://schemas.openxmlformats.org/package/2006/content-types}"
 PLACEHOLDER = "Click or tap here to enter text."
 REQUIRED = [
     "Document Control",
@@ -76,6 +84,43 @@ def _replace_in_paragraphs(root, replacements):
                 node.text = ""
 
 
+def _insert_process_flow_drawing(root, relationship_id: str) -> None:
+    for sdt in root.findall(".//" + W + "sdt"):
+        tag = sdt.find("./" + W + "sdtPr/" + W + "tag")
+        if tag is None or tag.get(W + "val") != "ProcessFlow":
+            continue
+        run = sdt.find(".//" + W + "r")
+        if run is None:
+            return
+        drawing = ET.SubElement(run, W + "drawing")
+        inline = ET.SubElement(drawing, WP + "inline")
+        ET.SubElement(inline, WP + "extent", {"cx": "5486400", "cy": "4114800"})
+        ET.SubElement(
+            inline, WP + "docPr", {"id": "9901", "name": "Approved Process Flow"}
+        )
+        graphic = ET.SubElement(inline, A + "graphic")
+        graphic_data = ET.SubElement(
+            graphic,
+            A + "graphicData",
+            {"uri": "http://schemas.openxmlformats.org/drawingml/2006/picture"},
+        )
+        picture = ET.SubElement(graphic_data, PIC + "pic")
+        nv = ET.SubElement(picture, PIC + "nvPicPr")
+        ET.SubElement(nv, PIC + "cNvPr", {"id": "0", "name": "sop_process_flow.png"})
+        ET.SubElement(nv, PIC + "cNvPicPr")
+        fill = ET.SubElement(picture, PIC + "blipFill")
+        ET.SubElement(fill, A + "blip", {R + "embed": relationship_id})
+        stretch = ET.SubElement(fill, A + "stretch")
+        ET.SubElement(stretch, A + "fillRect")
+        shape = ET.SubElement(picture, PIC + "spPr")
+        transform = ET.SubElement(shape, A + "xfrm")
+        ET.SubElement(transform, A + "off", {"x": "0", "y": "0"})
+        ET.SubElement(transform, A + "ext", {"cx": "5486400", "cy": "4114800"})
+        geometry = ET.SubElement(shape, A + "prstGeom", {"prst": "rect"})
+        ET.SubElement(geometry, A + "avLst")
+        return
+
+
 def populate_template(
     template: str | Path, draft: dict, output_dir: str | Path = "generated"
 ) -> Path:
@@ -98,6 +143,12 @@ def populate_template(
         )
         or "TBD"
     )
+    flow_source = str(sections["Process Flow"])
+    flow_png = (
+        render_mermaid_png(flow_source)
+        if flow_source.startswith("flowchart ")
+        else None
+    )
     values = {
         "WriterName": dc.get("written_by", "TBD"),
         "WrittenDate": dc.get("written_date", "TBD"),
@@ -111,7 +162,9 @@ def populate_template(
         "RolesA": roles["Accountable"],
         "RolesC": roles["Consulted"],
         "RolesI": roles["Informed"],
-        "ProcessFlow": sections["Process Flow"],
+        "ProcessFlow": (
+            "Approved process flow:" if flow_png else sections["Process Flow"]
+        ),
         "ProcedureIntro": (
             f"Trigger: {_plain(draft['trigger'])}\n"
             f"Output: {_plain(draft['output'])}\n"
@@ -130,6 +183,8 @@ def populate_template(
             if info.filename == "word/document.xml":
                 root = ET.fromstring(data)
                 _replace_sdt(root, values)
+                if flow_png:
+                    _insert_process_flow_drawing(root, "rIdSopProcessFlow")
                 # Populate the existing revision row without rebuilding its table.
                 texts = root.findall(".//" + W + "t")
                 rev = False
@@ -155,6 +210,30 @@ def populate_template(
                             target = ET.SubElement(r, W + "t")
                         target.text = draft["effective_date"]
                 data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+            elif info.filename == "word/_rels/document.xml.rels" and flow_png:
+                root = ET.fromstring(data)
+                ET.SubElement(
+                    root,
+                    REL + "Relationship",
+                    {
+                        "Id": "rIdSopProcessFlow",
+                        "Type": "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image",
+                        "Target": "media/sop_process_flow.png",
+                    },
+                )
+                data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+            elif info.filename == "[Content_Types].xml" and flow_png:
+                root = ET.fromstring(data)
+                if not any(
+                    item.get("Extension") == "png"
+                    for item in root.findall(CT + "Default")
+                ):
+                    ET.SubElement(
+                        root,
+                        CT + "Default",
+                        {"Extension": "png", "ContentType": "image/png"},
+                    )
+                data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
             elif info.filename == "word/header1.xml":
                 root = ET.fromstring(data)
                 _replace_in_paragraphs(
@@ -167,6 +246,8 @@ def populate_template(
                 )
                 data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
             zout.writestr(info, data)
+        if flow_png:
+            zout.writestr("word/media/sop_process_flow.png", flow_png)
     return output
 
 

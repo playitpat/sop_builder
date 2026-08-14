@@ -150,15 +150,25 @@ def governance_gaps(p: ProcessDefinition) -> list[Gap]:
 
 
 def readiness(p: ProcessDefinition) -> dict:
-    # Explicit weighted method, rounded to whole percentage points.
+    # Explicit whole-number weighting across every mandatory discovery field.
     checks = {
-        "process_owner_defined": (p.accountable_role.present(), 20),
-        "roles_defined": (p.responsible_role.present(), 15),
-        "trigger_defined": (p.process_trigger.present(), 15),
-        "output_defined": (p.process_output.present(), 15),
-        "approvals_defined": (p.approvals.present(), 15),
-        "records_defined": (p.required_records.present(), 10),
+        "purpose_defined": (p.purpose.present(), 5),
+        "in_scope_defined": (p.in_scope.present(), 5),
+        "out_of_scope_defined": (p.out_of_scope.present(), 5),
+        "process_owner_defined": (p.accountable_role.present(), 10),
+        "roles_defined": (p.responsible_role.present(), 10),
+        "trigger_defined": (p.process_trigger.present(), 10),
+        "output_defined": (p.process_output.present(), 10),
+        "approvals_defined": (p.approvals.present(), 10),
+        "validation_defined": (p.validation_criteria.present(), 8),
+        "records_defined": (p.required_records.present(), 7),
+        "escalation_defined": (p.escalation_path.present(), 5),
         "steps_defined": (bool(p.process_steps), 10),
+        "sop_author_defined": (
+            isinstance(p.document_control_information.value, dict)
+            and bool(p.document_control_information.value.get("written_by")),
+            5,
+        ),
     }
     return {
         "sop_recommendation": "Yes",

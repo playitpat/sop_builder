@@ -7,6 +7,7 @@ from src.conversation import handle_turn
 from src.document import populate_template, validate_docx
 from src.models import ProcessDefinition, Provenance, Value
 from src.openai_service import OpenAIService
+from src.process_flow import render_mermaid_png
 from src.repository import ProjectRepository
 
 TEMPLATE = Path("reference_documents/templates/TMP-10031_SOP_TemplateCC.docx")
@@ -150,7 +151,13 @@ def render_conversation() -> None:
                     "Built only from confirmed steps and ignored unless you approve it."
                 )
                 proposed_flow = mermaid_from_process(process)
-                st.code(proposed_flow, language="mermaid")
+                st.image(
+                    render_mermaid_png(proposed_flow),
+                    caption="Proposed process chart",
+                    use_container_width=True,
+                )
+                with st.expander("View Mermaid source"):
+                    st.code(proposed_flow, language="mermaid")
                 first, second = st.columns(2)
                 with first:
                     if st.button("Approve proposed flow"):

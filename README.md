@@ -1,93 +1,245 @@
-# Danone SOP Builder Future Version
+# Danone SOP Builder — Future Version
 
-A local MVP that preserves the prototype's conversational journey while adding durable projects, transparent governance analysis, local knowledge retrieval, an independent quality gate, and generation **inside the supplied TMP-10031 Word package**.
+> A conversational process-excellence MVP that turns operational knowledge into governed, review-ready SOPs while preserving Danone's official TMP-10031 Word template.
 
-## What the reference files establish
+## Executive summary
 
-### `reference_documents/prompt/Prompt SOP.docx`
+Creating an SOP is rarely just a writing task. Process knowledge is distributed across subject-matter experts, governance decisions are often implicit, and authors may not know the structure or language expected in a controlled document. A generic chatbot can produce polished prose, but it can also lose conversational state, invent missing controls, overlook approval gaps, or create a Word document that does not match the official template.
 
-The prompt requires a guarded first turn, concise SOP recommendation, natural-language discovery rather than a questionnaire, maturity assessment, relevant governance gaps, targeted follow-ups, explicit acceptance of TBD, professional global-English rewriting, and Word output as the ultimate result. The mandatory purpose opening and section sequence are enforced in code.
+This project explores a safer product pattern. **Danone SOP Builder** conducts a short, stateful process-discovery conversation; converts the answers into a provenance-aware process model; identifies ownership, approval, validation, evidence, and escalation gaps; applies an independent automated quality gate; and populates the supplied TMP-10031 DOCX package in place. Completed documents enter a human internal-review workflow before appearing in the validated SOP Library.
 
-### `reference_documents/presentation/SOP Builder.pptx`
+The result is a working local MVP—not a production compliance system—that demonstrates how generative AI, deterministic controls, document engineering, and human governance can work together.
 
-The seven-slide presentation frames the current creation problem, the solution and demo, its official-template output, and the limitations/future vision. Its story is preserved as: idea → assessment → extraction → gaps → clarification → draft → review/revision → official output. Some slide content is embedded as visual artwork rather than ordinary presentation text.
+## Business value
 
-### `reference_documents/templates/TMP-10031_SOP_TemplateCC.docx`
+The product is designed around four potential business outcomes:
 
-Package inspection found 39 OOXML parts, 17 structured document tags (content controls), three body tables, one bookmark, a branded header/footer, styles, relationships, drawings, and section properties. Content controls are tagged (`Purpose`, `InScope`, `RolesR`, `ProcessDetails`, and others); their displayed placeholder is `Click or tap here to enter text.` Header values are split across drawing text runs. The footer's template identity and feedback/confidentiality content are static publishing elements.
+1. **Reduce authoring effort** — employees describe a process in natural language instead of completing a long template questionnaire or manually formatting Word tables.
+2. **Improve process quality before documentation** — the assistant identifies missing ownership, scope, approval, validation, records, and escalation decisions while the process owner can still resolve them.
+3. **Increase document consistency** — professional global-English rewriting, explicit readiness rules, and deterministic section checks reduce variation between authors.
+4. **Strengthen governance and auditability** — source provenance, persistent conversations, automated review results, generated versions, controller comments, and validation decisions are stored as separate records.
+
+These are product hypotheses for an MVP. A production pilot should measure time to first review-ready draft, number of controller change requests, percentage of mandatory fields complete at first submission, and author/controller satisfaction.
+
+## What this project demonstrates
+
+For product, engineering, data, and transformation teams, the repository demonstrates:
+
+- Translating an existing Copilot prototype and business presentation into a testable application.
+- Designing a low-effort, one-question-at-a-time conversational workflow rather than an AI-themed form.
+- Combining OpenAI-assisted extraction with deterministic fallbacks and publishing gates.
+- Persisting complex conversational state in SQLite so an SOP can be resumed after restart.
+- Separating AI quality review from accountable human validation.
+- Implementing a corrections loop between internal controllers and SOP authors.
+- Retrieving local governance guidance without blindly copying existing documents.
+- Manipulating OOXML content controls, relationships, media, headers, tables, and revision metadata while preserving an official template.
+- Rendering a user-approved Mermaid-derived process chart in the UI and embedding it as a PNG in Word.
+- Testing domain validation, workflow persistence, document integrity, template immutability, and an end-to-end business fixture.
+
+## User journey
+
+```text
+Process idea
+  → SOP recommendation
+  → Natural-language process description
+  → Initial maturity and governance assessment
+  → One targeted follow-up at a time
+  → Completeness gate
+  → Optional user-approved process chart
+  → Automated quality review
+  → DOCX generation and internal-review submission
+  → Validate or return corrections
+  → Validated SOP Library
+```
+
+### Author experience
+
+The author starts with a topic such as “Create an SOP for customer complaint resolution.” The first-message guard does not generate a document from the title alone. Once a meaningful description is supplied, the assistant extracts available facts, shows a concise assessment, and asks only the next relevant question. A readiness score cannot reach 100 while mandatory questions remain.
+
+No Word file is offered while discovery is incomplete or automated quality review is failing. After automated checks pass, one action generates the document and submits it for human review.
+
+### Internal-controller experience
+
+Submitted SOPs appear in the **Internal Review Queue**. A controller can download the submission, identify themselves, record comments, validate the SOP, or send corrections to the author. Correction comments are inserted into the author's persisted conversation for response and resubmission. Only human-validated SOPs appear in the **SOP Library**.
+
+## Key capabilities
+
+### Conversational process discovery
+
+- Guarded first message and concise SOP recommendation
+- Incremental extraction without overwriting confirmed user information
+- Field-level provenance: user provided, uploaded-document extraction, inferred, or missing/TBD
+- One targeted question per response
+- Human-readable maturity and governance summaries rather than raw JSON
+- OpenAI Responses API mode with a conservative local fallback
+
+### Governance and quality controls
+
+- Explicit 0–100 readiness calculation across all mandatory discovery fields
+- Governance checks for scope, Responsible, Accountable, approval, validation, records, output, escalation, and executable steps
+- Independent deterministic draft review
+- Safe automatic writing corrections without inventing business controls
+- Clear separation between automated quality checks and human validation
+
+### Controlled Word generation
+
+- Uses `reference_documents/templates/TMP-10031_SOP_TemplateCC.docx` as the document foundation
+- Replaces tagged content controls and targeted metadata instead of recreating the document
+- Preserves template styles, branding, tables, header/footer, relationships, and section properties
+- Produces real Word line breaks and separated content rather than dense newline text
+- Removes authoring placeholders and validates the final DOCX package
+- Adds version `1.0`, `New SOP`, and controlled TBD values where publication data is unavailable
+
+### Process visualization
+
+The application derives Mermaid source only from confirmed ordered steps. The author previews a rendered flowchart and must explicitly approve it; otherwise Process Flow remains TBD. Approved flowcharts are rendered locally to PNG and embedded in the existing Word Process Flow content control. The current renderer supports a linear Mermaid subset; decision diamonds and complex branching are a future enhancement.
+
+### Persistence and SOP lifecycle
+
+- SQLite-backed projects, messages, structured process state, artifacts, reviews, and files
+- Resume after application restart
+- Submitted, changes-requested, and validated workflow states
+- Controller identity, comments, and decision history
+- Validated-only SOP Library
+
+## Reference documents and product constraints
+
+The implementation treats three supplied files as its source of truth:
+
+| Reference | Role |
+|---|---|
+| `reference_documents/prompt/Prompt SOP.docx` | Defines the guarded conversation, maturity review, governance checks, writing rules, and required output behavior |
+| `reference_documents/presentation/SOP Builder.pptx` | Defines the business problem, existing experience, demo journey, limitations, and future vision |
+| `reference_documents/templates/TMP-10031_SOP_TemplateCC.docx` | Defines the official section structure, content controls, tables, styles, header/footer, branding, and document layout |
+
+Template inspection found 39 OOXML parts, 17 structured document tags, three body tables, one bookmark, and separate branded header/footer parts. The official template remains immutable; generated files are written only to `generated/`.
 
 ## Architecture
 
-| Component | Responsibility | Later enterprise replacement |
+| Component | Responsibility | Enterprise evolution |
 |---|---|---|
-| `src/models.py` | Validated process model and field provenance | Dataverse entities |
-| `src/conversation.py` / `src/openai_service.py` | Incremental chat orchestration, conservative fallback, Responses API adapter | Copilot Studio agents |
-| `src/agents.py` | Readiness, governance, generator, deterministic reviewer, loop | Copilot Studio / OpenAI review agents |
-| `src/repository.py` | SQLite projects, messages, process snapshots, gaps/drafts/reviews, files | Dataverse |
-| `src/knowledge.py` | Transparent local TF-IDF retrieval with source names | SharePoint / Microsoft Graph search |
-| `src/document.py` | In-place OOXML population and independent validation | Graph/Word automation where appropriate |
-| `app.py` | Streamlit conversational workspace and download | Teams/Copilot Studio front end |
+| `app.py` | Streamlit author, library, and controller experiences | Teams or Copilot Studio front end |
+| `src/models.py` | Process model, ordered steps, provenance, review structures | Dataverse entities |
+| `src/conversation.py` | Turn orchestration, state merging, fallback extraction, question sequencing | Copilot orchestration |
+| `src/openai_service.py` | Schema-constrained Responses API adapter | Approved enterprise model gateway |
+| `src/agents.py` | Readiness, governance, generation, consolidation, and review | Agent services / Power Automate |
+| `src/repository.py` | SQLite projects, messages, versions, and review workflow | Dataverse |
+| `src/knowledge.py` | Transparent local TF-IDF retrieval | Permission-trimmed SharePoint / Graph search |
+| `src/process_flow.py` | Local visual process-chart rendering | Visio, Mermaid service, or approved diagram tooling |
+| `src/document.py` | In-place OOXML population and structural validation | Microsoft Graph / controlled Word automation |
 
-The single chat bar saves each turn, merges newly extracted facts without erasing previous answers, presents one initial maturity/governance assessment in the conversation, and then asks one relevant follow-up at a time. Raw JSON is not shown in the main author experience. When `OPENAI_API_KEY` is configured, conversation text and the structured process state are sent to the OpenAI Responses API for incremental extraction and targeted questioning. Without a key—or if an API call fails—the conservative local fallback remains usable. Raw knowledge files are never uploaded by this adapter.
+The service boundaries are intentionally small so local MVP components can later be replaced without redesigning the full workflow.
 
-The primary navigation is intentionally task-based: **Create SOP**, **SOP Library**, and **Internal Review Queue**. The library contains only SOPs validated by a human internal controller. Submitted SOPs remain in the review queue; requested corrections are injected into the author's saved conversation for response and resubmission. Automated quality approval remains distinct from human validation, and controller decisions and comments are retained in SQLite.
+## Readiness method
 
-## Word approach and rationale
+The score is a whole-number weighted sum and reaches 100 only when no mandatory discovery question remains:
 
-The generator copies the original DOCX ZIP package and edits only `word/document.xml` content-control payloads, targeted revision cells, and target header text in `word/header1.xml`. It does **not** reconstruct the document. This retains styles, drawings, table definitions, relationships, footer, branding, page setup, and unsupported Word features. A `python-docx` round-trip was deliberately avoided because unsupported Office constructs can be changed or discarded; `docxtpl` was rejected because the source contains content controls, not Jinja tags.
+| Item | Weight |
+|---|---:|
+| Purpose | 5 |
+| In-scope | 5 |
+| Out-of-scope | 5 |
+| Accountable owner | 10 |
+| Responsible role | 10 |
+| Trigger | 10 |
+| Output | 10 |
+| Approval | 10 |
+| Validation criteria | 8 |
+| Required records and storage | 7 |
+| Escalation | 5 |
+| Ordered steps | 10 |
+| SOP author | 5 |
 
-Validation reopens the ZIP/XML and checks section presence/order, three tables, cleaned placeholders, header metadata, RACI, revision 1.0/New SOP, and retained styles/footer. Word owns final pagination; opening the file in desktop Word may refresh page fields.
+## Run locally
 
-## Quality review loop
-
-The generator consolidates repeated conversational steps, normalizes safe writing issues such as the mandatory purpose opening, and builds a draft from the process definition and provenance snapshot. The logically separate reviewer checks mandatory section order, purpose wording, explicit scope, RACI, actionable ordered steps and actors, trigger/output, approvals, validation, records, escalation, non-invention of flow, vague wording, revision history, and appendices. `TBD` does not pass mandatory completeness checks. No Word file is offered while discovery is incomplete or automated review is failing. After automated checks pass, one action generates the DOCX and submits it for human review; download is available from the validated SOP Library.
-
-When process information is complete, the UI can propose Mermaid source generated only from confirmed ordered steps. The user must explicitly approve it or retain `TBD`; the current MVP stores approved Mermaid source in the Process Flow section but does not yet render it as a Word image.
-
-## Readiness score
-
-The score is a whole-number weighted sum, not arbitrary precision: accountable owner 20, responsible role 15, trigger 15, output 15, approval 15, records 10, and ordered steps 10. Missing items receive zero for their weight.
-
-## Run
-
-Python 3.12 is the target (the test container currently uses a newer compatible interpreter).
+Python 3.12 is the target runtime.
 
 ```bash
 python -m venv .venv
-. .venv/bin/activate
+```
+
+macOS/Linux:
+
+```bash
+source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-To enable AI conversation, copy `.env.example` to the gitignored `.env` and add your key, or set it in the launch environment (never commit it):
+Windows PowerShell:
 
-```bash
-export OPENAI_API_KEY="your-key"
-export OPENAI_MODEL="gpt-5-mini"
+```powershell
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Run the synthetic demonstration and tests:
+### Enable OpenAI-assisted conversation
+
+The core demo also has a conservative local mode. For richer natural-language extraction, copy the example configuration and add a key to the gitignored `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+```dotenv
+OPENAI_API_KEY=your-key
+OPENAI_MODEL=gpt-5-mini
+SOP_BUILDER_EXPERIMENTAL_MULTIMODAL=false
+```
+
+Never put a secret in `.env.example`, source code, screenshots, or Git history.
+
+## Demo and tests
+
+Run the synthetic Power BI fixture:
 
 ```bash
 python scripts/run_demo.py
+```
+
+Expected output:
+
+```text
+generated/SOP – Power BI Sales Dashboard Product Creation Process – v1.0.docx
+```
+
+Run the automated suite:
+
+```bash
 pytest -q
 ```
 
-The demo output is `generated/SOP – Power BI Sales Dashboard Product Creation Process – v1.0.docx`. Runtime databases and generated SOPs are gitignored.
+The suite covers model validation, persistence and restoration, first-message behavior, governance rules, readiness scoring, review behavior, knowledge retrieval, template population, placeholder removal, Word integrity, line breaks, revision history, process-chart embedding, internal-review decisions, correction feedback, and the end-to-end fixture.
 
 ## Data handling and security
 
-- Secrets are environment variables; `.env` is ignored.
-- Conversation/process data and artifact metadata remain in local SQLite.
-- Knowledge documents and retrieval remain local backend capabilities rather than primary author navigation. The service indexes TXT, Markdown, and DOCX; PDF extraction uses the declared `pypdf` dependency. A future administrator-only surface can manage these sources.
-- Do not place confidential production material in a development checkout. Define retention/access controls before enterprise use.
-- Uploaded image, process-map, and visual-PDF understanding is an experimental future capability and is currently disabled rather than silently sending artifacts externally.
+- Secrets are environment variables; `.env` is gitignored.
+- Conversation and process state remain in local SQLite for the MVP.
+- Knowledge documents remain local; raw source files are not uploaded by the current OpenAI adapter.
+- Only conversation text and structured process state are sent when OpenAI mode is configured.
+- Generated documents and local databases are gitignored.
+- Production use requires authentication, authorization, encryption, retention rules, permission-trimmed retrieval, approved model endpoints, and formal validation with process, Quality, Privacy, Security, and Legal stakeholders.
 
-## Known limitations and recommended Microsoft 365 path
+## Current limitations
 
-- AI extraction requires a valid OpenAI API key and network access; local fallback handles straightforward English but is intentionally conservative.
-- Model-based semantic review remains a subsequent enhancement; deterministic independent publishing checks are functional.
-- Local retrieval indexes TXT, Markdown, and DOCX text. Implement the same service interface using Graph Search over permission-trimmed SharePoint content, with citations and document version metadata.
-- Final pagination and visual fidelity should be certified in desktop Word. A conversion/rendering tool was unavailable in the build environment, so validation is structural rather than pixel-based.
-- Next, expose the domain services behind authenticated APIs, map projects to Dataverse, use Copilot Studio for conversation, SharePoint/Graph for knowledge and controlled documents, and Power Automate for approval/publication. Preserve this service separation so no workflow rewrite is required.
+- The deterministic fallback is intentionally conservative; complex prose benefits from OpenAI-assisted extraction.
+- The automated reviewer is primarily deterministic. A separately configured semantic reviewer is a future enhancement.
+- The process-chart renderer currently supports a linear sequence rather than complex decision diamonds and parallel branches.
+- PDF visual understanding and image/process-map analysis remain experimental.
+- Word owns final pagination and field refresh; production certification should include desktop Word rendering and controlled-document testing.
+- SQLite and local files are suitable for an MVP, not multi-user enterprise deployment.
+
+## Recommended Microsoft 365 path
+
+1. Move projects, process definitions, provenance, versions, and review decisions to Dataverse.
+2. Use Copilot Studio or Teams for the conversational author experience.
+3. Replace local retrieval with permission-trimmed SharePoint and Microsoft Graph search.
+4. Use Entra ID groups for author, controller, approver, and administrator permissions.
+5. Use Power Automate for controller validation, accountable-owner approval, publication, notifications, and supersession.
+6. Use Microsoft Graph or an approved Word automation service for controlled storage and publication.
+7. Add operational analytics for cycle time, first-pass completeness, correction volume, and adoption.
+
+## Why this is an MVP rather than a production compliance system
+
+The repository intentionally proves the end-to-end product concept with lightweight local components. It does not claim regulatory approval, replace accountable process owners, or make autonomous publication decisions. The design keeps AI assistance bounded by deterministic checks, explicit provenance, human validation, and the official document foundation—providing a credible path from prototype to governed enterprise implementation.

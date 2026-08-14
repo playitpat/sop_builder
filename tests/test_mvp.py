@@ -19,6 +19,7 @@ from src.agents import (
     readiness,
     review_draft,
 )
+from src.agents import mermaid_from_process
 from src.document import PLACEHOLDER, inspect_template, populate_template, validate_docx
 from src.conversation import handle_turn, merge_updates
 from src.knowledge import LocalKnowledgeService
@@ -117,7 +118,8 @@ def test_readiness_explicit_weighting(complete_process):
     result = readiness(complete_process)
     assert result["documentation_readiness_score"] == 100
     complete_process.required_records = Value()
-    assert readiness(complete_process)["documentation_readiness_score"] == 90
+    assert readiness(complete_process)["documentation_readiness_score"] == 93
+    assert readiness(complete_process)["records_defined"] is False
 
 
 def test_required_section_order_and_generation(complete_process):
@@ -222,6 +224,24 @@ def test_template_population_placeholders_integrity_and_revision(
             ".//{http://schemas.openxmlformats.org/wordprocessingml/2006/main}br"
         )
     assert hashlib.sha256(template.read_bytes()).hexdigest() == before
+
+
+def test_approved_mermaid_flow_is_rendered_as_word_image(tmp_path, complete_process):
+    complete_process.process_flow_reference = Value(
+        mermaid_from_process(complete_process), Provenance.USER
+    )
+    out = populate_template(
+        "reference_documents/templates/TMP-10031_SOP_TemplateCC.docx",
+        generate_draft(complete_process),
+        tmp_path,
+    )
+    with ZipFile(out) as archive:
+        assert "word/media/sop_process_flow.png" in archive.namelist()
+        assert archive.read("word/media/sop_process_flow.png").startswith(b"\x89PNG")
+        document_xml = archive.read("word/document.xml")
+        assert b"sop_process_flow.png" in document_xml
+        assert b"rIdSopProcessFlow" in document_xml
+    assert validate_docx(out)["valid"]
 
 
 def test_source_documents_are_organized():
